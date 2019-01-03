@@ -6,6 +6,7 @@ extern crate piston;
 extern crate graphics;
 extern crate glutin_window;
 extern crate opengl_graphics;
+extern crate rand;
 
 use piston::window::WindowSettings;
 use piston::event_loop::*;
@@ -15,10 +16,12 @@ use opengl_graphics::{ GlGraphics, OpenGL, Filter, GlyphCache, TextureSettings }
 pub use crate::board::Board;
 pub use crate::board_controller::BoardController;
 pub use crate::board_view::{BoardView, BoardViewSettings};
+pub use crate::tile::{Tile, Direction};
 
 mod board;
 mod board_controller;
 mod board_view;
+mod tile;
 
 fn main() {
     let opengl = OpenGL::V3_2;
