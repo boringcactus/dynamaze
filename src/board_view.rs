@@ -36,8 +36,6 @@ pub struct BoardViewSettings {
     pub text_color: Color,
     /// Wall color
     pub wall_color: Color,
-    /// Floor color
-    pub floor_color: Color,
     /// Tile wall width
     pub wall_width: f64,
 }
@@ -59,7 +57,6 @@ impl BoardViewSettings {
             selection_background_color: [0.9, 0.9, 1.0, 1.0],
             text_color: [0.0, 0.0, 0.1, 1.0],
             wall_color: [0.2, 0.2, 0.3, 1.0],
-            floor_color: [0.9, 0.9, 0.8, 1.0],
             wall_width: 20.0,
         }
     }
@@ -131,15 +128,12 @@ impl BoardView {
 
         // draw the tiles
         let wall_rect = Rectangle::new(settings.wall_color);
-        let floor_rect = Rectangle::new(settings.floor_color);
         for j in 0..board::SIZE {
             for i in 0..board::SIZE {
                 let north = settings.position[1] + j as f64 * cell_size;
-                let north_ish = north + settings.wall_width;
                 let south = north + cell_size;
                 let south_ish = south - settings.wall_width;
                 let west = settings.position[0] + i as f64 * cell_size;
-                let west_ish = west + settings.wall_width;
                 let east = west + cell_size;
                 let east_ish = east - settings.wall_width;
 
@@ -148,17 +142,14 @@ impl BoardView {
                 wall_rect.draw([west, south_ish, settings.wall_width, settings.wall_width], &c.draw_state, c.transform, g);
                 wall_rect.draw([east_ish, south_ish, settings.wall_width, settings.wall_width], &c.draw_state, c.transform, g);
 
-                let mut walled_directions = vec![Direction::North, Direction::South, Direction::East, Direction::West];
-                for d in &controller.board.get([i, j]).connections {
-                    walled_directions.retain(|x| *x != *d);
-                }
+                let walled_directions = controller.board.get([i, j]).walls();
 
                 for d in walled_directions {
                     let rect = match d {
                         Direction::North => [west, north, cell_size, settings.wall_width],
                         Direction::South => [west, south_ish, cell_size, settings.wall_width],
-                        Direction::East => [west, north, settings.wall_width, cell_size],
-                        Direction::West => [east_ish, north, settings.wall_width, cell_size],
+                        Direction::East => [east_ish, north, settings.wall_width, cell_size],
+                        Direction::West => [west, north, settings.wall_width, cell_size],
                     };
                     wall_rect.draw(rect, &c.draw_state, c.transform, g);
                 }

@@ -16,7 +16,7 @@ use opengl_graphics::{ GlGraphics, OpenGL, Filter, GlyphCache, TextureSettings }
 pub use crate::board::Board;
 pub use crate::board_controller::BoardController;
 pub use crate::board_view::{BoardView, BoardViewSettings};
-pub use crate::tile::{Tile, Direction};
+pub use crate::tile::{Tile, Direction, Shape};
 
 mod board;
 mod board_controller;

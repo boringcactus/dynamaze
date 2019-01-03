@@ -1,6 +1,7 @@
 //! Board logic
 
-use crate::Tile;
+use crate::{Direction, Shape, Tile};
+use rand::prelude::*;
 
 /// Size of game board
 pub const SIZE: usize = 7;
@@ -14,20 +15,15 @@ pub struct Board {
 impl Board {
     /// Creates a new board
     pub fn new() -> Board {
-        let mut cells = [
-            [Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random()],
-            [Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random()],
-            [Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random()],
-            [Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random()],
-            [Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random()],
-            [Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random()],
-            [Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random(), Tile::random()],
+        let cells = [
+            [Tile{shape: Shape::L, orientation: Direction::East}, random(), random(), random(), random(), random(), Tile{shape: Shape::L, orientation: Direction::South}],
+            [random(), random(), random(), random(), random(), random(), random()],
+            [random(), random(), random(), random(), random(), random(), random()],
+            [random(), random(), random(), random(), random(), random(), random()],
+            [random(), random(), random(), random(), random(), random(), random()],
+            [random(), random(), random(), random(), random(), random(), random()],
+            [Tile{shape: Shape::L, orientation: Direction::North}, random(), random(), random(), random(), random(), Tile{shape: Shape::L, orientation: Direction::West}],
         ];
-        for i in 0..SIZE {
-            for j in 0..SIZE {
-                cells[j][i] = Tile::random();
-            }
-        }
         Board {
             cells,
         }
