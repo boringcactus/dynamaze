@@ -4,7 +4,6 @@ use graphics::types::Color;
 use graphics::{Context, Graphics};
 use graphics::character::CharacterCache;
 
-use crate::board;
 use crate::BoardController;
 use crate::Direction;
 
@@ -12,8 +11,10 @@ use crate::Direction;
 pub struct BoardViewSettings {
     /// Position from top left corner
     pub position: [f64; 2],
-    /// Size of board
-    pub size: f64,
+    /// Width of board
+    pub width: f64,
+    /// Height of board
+    pub height: f64,
     /// Background color
     pub background_color: Color,
     /// Border color
@@ -46,8 +47,9 @@ impl BoardViewSettings {
     /// Creates new board view settings
     pub fn new() -> BoardViewSettings {
         BoardViewSettings {
-            position: [10.0; 2],
-            size: 400.0,
+            position: [0.0; 2],
+            width: 640.0,
+            height: 480.0,
             background_color: [0.8, 0.8, 1.0, 1.0],
             border_color: [0.0, 0.0, 0.2, 1.0],
             board_edge_color: [0.0, 0.0, 0.2, 1.0],
@@ -87,25 +89,38 @@ impl BoardView {
     ) where C: CharacterCache<Texture = G::Texture> {
         use graphics::{Line, Rectangle, Polygon};
 
+        let board_width = controller.board.width();
+        let board_height = controller.board.height();
+
         let ref settings = self.settings;
-        let cell_size = settings.size / (board::SIZE as f64 + 2.0);
+        let (cell_size, x_padding, y_padding) = {
+            let cell_max_height = settings.height / (board_height as f64 + 2.0);
+            let cell_max_width = settings.width / (board_width as f64 + 2.0);
+            if cell_max_height < cell_max_width {
+                let space_used_x = cell_max_height * (board_width as f64 + 2.0);
+                (cell_max_height, (settings.width - space_used_x) / 2.0, 0.0)
+            } else {
+                let space_used_y = cell_max_width * (board_height as f64 + 2.0);
+                (cell_max_width, 0.0, (settings.height - space_used_y) / 2.0)
+            }
+        };
 
         // draw board
         let board_rect = [
-            settings.position[0] + cell_size, settings.position[1] + cell_size,
-            settings.size - 2.0 * cell_size, settings.size - 2.0 * cell_size
+            settings.position[0] + x_padding + cell_size, settings.position[1] + y_padding + cell_size,
+            cell_size * board_width as f64, cell_size * board_height as f64
         ];
         Rectangle::new(settings.background_color)
             .draw(board_rect, &c.draw_state, c.transform, g);
 
         // draw the tiles
         let wall_rect = Rectangle::new(settings.wall_color);
-        for j in 0..board::SIZE {
-            for i in 0..board::SIZE {
-                let north = settings.position[1] + (j + 1) as f64 * cell_size;
+        for j in 0..board_height {
+            for i in 0..board_width {
+                let north = settings.position[1] + y_padding + (j + 1) as f64 * cell_size;
                 let south = north + cell_size;
                 let south_ish = south - settings.wall_width;
-                let west = settings.position[0] + (i + 1) as f64 * cell_size;
+                let west = settings.position[0] + x_padding + (i + 1) as f64 * cell_size;
                 let east = west + cell_size;
                 let east_ish = east - settings.wall_width;
 
@@ -130,16 +145,18 @@ impl BoardView {
 
         // draw tile edges
         let cell_edge = Line::new(settings.cell_edge_color, settings.cell_edge_radius);
-        for i in 0..board::SIZE {
-            let x = settings.position[0] + (i + 1) as f64 / (board::SIZE as f64 + 2.0) * settings.size;
-            let y = settings.position[1] + (i + 1) as f64 / (board::SIZE as f64 + 2.0) * settings.size;
-            let x2 = settings.position[0] + settings.size - cell_size;
-            let y2 = settings.position[1] + settings.size - cell_size;
+        for i in 0..board_width {
+            let x = settings.position[0] + x_padding + (i + 1) as f64 * cell_size;
+            let y2 = settings.position[1] + settings.height - cell_size - y_padding;
 
-            let vline = [x, settings.position[1] + cell_size, x, y2];
+            let vline = [x, settings.position[1] + y_padding + cell_size, x, y2];
             cell_edge.draw(vline, &c.draw_state, c.transform, g);
+        }
+        for j in 0..board_height {
+            let y = settings.position[1] + y_padding + (j + 1) as f64 * cell_size;
+            let x2 = settings.position[0] + settings.width - cell_size - x_padding;
 
-            let hline = [settings.position[0] + cell_size, y, x2, y];
+            let hline = [settings.position[0] + x_padding + cell_size, y, x2, y];
             cell_edge.draw(hline, &c.draw_state, c.transform, g);
         }
 
@@ -149,34 +166,41 @@ impl BoardView {
 
         // draw insert guides
         let insert_guide = Polygon::new(settings.insert_guide_color);
-        for i in 0..3 {
-            let north = settings.position[1];
+        for i in 0..(board_width / 2) {
+            let north = settings.position[1] + y_padding;
             let north_ish = north + cell_size;
-            let west = settings.position[0];
-            let west_ish = west + cell_size;
-            let east = west + settings.size;
-            let east_ish = east - cell_size;
-            let south = north + settings.size;
+            let south = settings.position[1] + settings.height - y_padding;
             let south_ish = south - cell_size;
 
-            let early_offset = (i as f64 + 1.0) * 2.0 / (board::SIZE as f64 + 2.0) * settings.size;
+            let early_offset = (i as f64 + 1.0) * 2.0 * cell_size;
             let mid_offset = early_offset + cell_size / 2.0;
             let late_offset = early_offset + cell_size;
 
-            let early_x = settings.position[0] + early_offset;
-            let mid_x = settings.position[0] + mid_offset;
-            let late_x = settings.position[0] + late_offset;
-
-            let early_y = settings.position[1] + early_offset;
-            let mid_y = settings.position[1] + mid_offset;
-            let late_y = settings.position[1] + late_offset;
+            let early_x = settings.position[0] + x_padding + early_offset;
+            let mid_x = settings.position[0] + x_padding + mid_offset;
+            let late_x = settings.position[0] + x_padding + late_offset;
 
             // draw north edge
             insert_guide.draw(&[[early_x, north], [mid_x, north_ish], [late_x, north]], &c.draw_state, c.transform, g);
-            // draw east edge
-            insert_guide.draw(&[[east, early_y], [east_ish, mid_y], [east, late_y]], &c.draw_state, c.transform, g);
             // draw south edge
             insert_guide.draw(&[[early_x, south], [mid_x, south_ish], [late_x, south]], &c.draw_state, c.transform, g);
+        }
+        for j in 0..(board_height / 2) {
+            let west = settings.position[0] + x_padding;
+            let west_ish = west + cell_size;
+            let east = settings.position[0] + settings.width - x_padding;
+            let east_ish = east - cell_size;
+
+            let early_offset = (j as f64 + 1.0) * 2.0 * cell_size;
+            let mid_offset = early_offset + cell_size / 2.0;
+            let late_offset = early_offset + cell_size;
+
+            let early_y = settings.position[1] + y_padding + early_offset;
+            let mid_y = settings.position[1] + y_padding + mid_offset;
+            let late_y = settings.position[1] + y_padding + late_offset;
+
+            // draw east edge
+            insert_guide.draw(&[[east, early_y], [east_ish, mid_y], [east, late_y]], &c.draw_state, c.transform, g);
             // draw west edge
             insert_guide.draw(&[[west, early_y], [west_ish, mid_y], [west, late_y]], &c.draw_state, c.transform, g);
         }

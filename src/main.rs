@@ -29,7 +29,7 @@ fn main() {
     // Create a window
     let mut window: Window = WindowSettings::new(
         "DynaMaze",
-        [512, 512]
+        [640, 480]
     )
         .opengl(opengl)
         .exit_on_esc(true)
@@ -40,7 +40,7 @@ fn main() {
     let mut events = Events::new(EventSettings::new());
     let mut gl = GlGraphics::new(opengl);
 
-    let board = Board::new();
+    let board = Board::new(7, 7);
     let mut board_controller = BoardController::new(board);
     let board_view_settings = BoardViewSettings::new();
     let board_view = BoardView::new(board_view_settings);
@@ -50,7 +50,7 @@ fn main() {
         .expect("Could not load font");
 
     while let Some(e) = events.next(&mut window) {
-        board_controller.event(board_view.settings.position, board_view.settings.size, &e);
+        board_controller.event(&board_view.settings, &e);
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
                 use graphics::{clear};

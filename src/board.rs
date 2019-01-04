@@ -3,27 +3,27 @@
 use crate::{Direction, Shape, Tile};
 use rand::prelude::*;
 
-/// Size of game board
-pub const SIZE: usize = 7;
-
 /// Information about board state
 pub struct Board {
     /// Cells
-    pub cells: [[Tile; SIZE]; SIZE],
+    cells: Vec<Vec<Tile>>,
 }
 
 impl Board {
     /// Creates a new board
-    pub fn new() -> Board {
-        let cells = [
-            [Tile{shape: Shape::L, orientation: Direction::East}, random(), random(), random(), random(), random(), Tile{shape: Shape::L, orientation: Direction::South}],
-            [random(), random(), random(), random(), random(), random(), random()],
-            [random(), random(), random(), random(), random(), random(), random()],
-            [random(), random(), random(), random(), random(), random(), random()],
-            [random(), random(), random(), random(), random(), random(), random()],
-            [random(), random(), random(), random(), random(), random(), random()],
-            [Tile{shape: Shape::L, orientation: Direction::North}, random(), random(), random(), random(), random(), Tile{shape: Shape::L, orientation: Direction::West}],
-        ];
+    pub fn new(width: usize, height: usize) -> Board {
+        let mut cells = vec![];
+        for _ in 0..height {
+            let mut row = vec![];
+            for _ in 0..width {
+                row.push(random());
+            }
+            cells.push(row);
+        }
+        cells[0][0] = Tile{shape: Shape::L, orientation: Direction::East};
+        cells[0][width - 1] = Tile{shape: Shape::L, orientation: Direction::South};
+        cells[height - 1][0] = Tile{shape: Shape::L, orientation: Direction::North};
+        cells[height - 1][width - 1] = Tile{shape: Shape::L, orientation: Direction::West};
         Board {
             cells,
         }
@@ -32,5 +32,15 @@ impl Board {
     /// Gets a cell from the board
     pub fn get(&self, ind: [usize; 2]) -> &Tile {
         &self.cells[ind[1]][ind[0]]
+    }
+
+    /// Gets the width of the board
+    pub fn width(&self) -> usize {
+        self.cells[0].len()
+    }
+
+    /// Gets the height of the board
+    pub fn height(&self) -> usize {
+        self.cells.len()
     }
 }

@@ -3,6 +3,7 @@
 use piston::input::GenericEvent;
 
 use crate::Board;
+use crate::BoardViewSettings;
 
 /// Handles events for DynaMaze game
 pub struct BoardController {
@@ -22,8 +23,8 @@ impl BoardController {
     }
 
     /// Handles events
-    pub fn event<E: GenericEvent>(&mut self, pos: [f64; 2], size: f64, e: &E) {
-//        use piston::input::{Button, Key, MouseButton};
+    pub fn event<E: GenericEvent>(&mut self, settings: &BoardViewSettings, e: &E) {
+        use piston::input::{Button, Key, MouseButton};
 
         if let Some(pos) = e.mouse_cursor_args() {
             self.cursor_pos = pos;
@@ -42,21 +43,14 @@ impl BoardController {
 //            }
 //        }
 
-//        if let Some(Button::Keyboard(key)) = e.press_args() {
-//            if let Some(ind) = self.selection {
-//                match key {
-//                    Key::D1 | Key::NumPad1 => self.board.set(ind, 1),
-//                    Key::D2 | Key::NumPad2 => self.board.set(ind, 2),
-//                    Key::D3 | Key::NumPad3 => self.board.set(ind, 3),
-//                    Key::D4 | Key::NumPad4 => self.board.set(ind, 4),
-//                    Key::D5 | Key::NumPad5 => self.board.set(ind, 5),
-//                    Key::D6 | Key::NumPad6 => self.board.set(ind, 6),
-//                    Key::D7 | Key::NumPad7 => self.board.set(ind, 7),
-//                    Key::D8 | Key::NumPad8 => self.board.set(ind, 8),
-//                    Key::D9 | Key::NumPad9 => self.board.set(ind, 9),
-//                    _ => {}
-//                }
-//            }
-//        }
+        if let Some(Button::Keyboard(key)) = e.press_args() {
+            match key {
+                Key::Right => self.board = Board::new(self.board.width() + 1, self.board.height()),
+                Key::Left => self.board = Board::new(self.board.width() - 1, self.board.height()),
+                Key::Up => self.board = Board::new(self.board.width(), self.board.height() - 1),
+                Key::Down => self.board = Board::new(self.board.width(), self.board.height() + 1),
+                _ => {}
+            }
+        }
     }
 }
