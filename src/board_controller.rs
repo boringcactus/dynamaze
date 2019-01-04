@@ -23,8 +23,8 @@ impl BoardController {
     }
 
     /// Handles events
-    pub fn event<E: GenericEvent>(&mut self, settings: &BoardViewSettings, e: &E) {
-        use piston::input::{Button, Key, MouseButton};
+    pub fn event<E: GenericEvent>(&mut self, _settings: &BoardViewSettings, e: &E) {
+        use piston::input::{Button, Key};
 
         if let Some(pos) = e.mouse_cursor_args() {
             self.cursor_pos = pos;
