@@ -7,6 +7,8 @@ use rand::prelude::*;
 pub struct Board {
     /// Cells
     cells: Vec<Vec<Tile>>,
+    /// Loose tile
+    pub loose_tile: Tile,
 }
 
 impl Board {
@@ -26,6 +28,7 @@ impl Board {
         cells[height - 1][width - 1] = Tile{shape: Shape::L, orientation: Direction::West};
         Board {
             cells,
+            loose_tile: random(),
         }
     }
 

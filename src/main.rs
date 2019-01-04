@@ -11,7 +11,7 @@ extern crate rand;
 use piston::window::WindowSettings;
 use piston::event_loop::*;
 use piston::input::*;
-use glutin_window::GlutinWindow as Window;
+use glutin_window::GlutinWindow;
 use opengl_graphics::{ GlGraphics, OpenGL, Filter, GlyphCache, TextureSettings };
 pub use crate::board::Board;
 pub use crate::board_controller::BoardController;
@@ -25,11 +25,12 @@ mod tile;
 
 fn main() {
     let opengl = OpenGL::V3_2;
+    let window_size = [800, 600];
 
     // Create a window
-    let mut window: Window = WindowSettings::new(
+    let mut window: GlutinWindow = WindowSettings::new(
         "DynaMaze",
-        [640, 480]
+        window_size
     )
         .opengl(opengl)
         .exit_on_esc(true)
@@ -42,7 +43,7 @@ fn main() {
 
     let board = Board::new(7, 7);
     let mut board_controller = BoardController::new(board);
-    let board_view_settings = BoardViewSettings::new();
+    let board_view_settings = BoardViewSettings::new([window_size[0] as f64, window_size[1] as f64]);
     let board_view = BoardView::new(board_view_settings);
 
     let texture_settings = TextureSettings::new().filter(Filter::Nearest);

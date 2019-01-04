@@ -8,6 +8,7 @@ use graphics::character::CharacterCache;
 
 use crate::BoardController;
 use crate::Direction;
+use crate::Tile;
 
 #[derive(Clone)]
 struct Extents {
@@ -64,15 +65,18 @@ pub struct BoardViewSettings {
     pub wall_width: f64,
     /// Insert guide color
     pub insert_guide_color: Color,
+    /// UI margin size
+    pub ui_margin: f64,
 }
 
 impl BoardViewSettings {
     /// Creates new board view settings
-    pub fn new() -> BoardViewSettings {
+    pub fn new(size: [f64; 2]) -> BoardViewSettings {
+        let [width, height] = size;
         BoardViewSettings {
             position: [0.0; 2],
-            width: 640.0,
-            height: 480.0,
+            width,
+            height,
             background_color: [0.8, 0.8, 1.0, 1.0],
             border_color: [0.0, 0.0, 0.2, 1.0],
             board_edge_color: [0.0, 0.0, 0.2, 1.0],
@@ -86,6 +90,7 @@ impl BoardViewSettings {
             wall_color: [0.2, 0.2, 0.3, 1.0],
             wall_width: 0.3,
             insert_guide_color: [0.6, 0.2, 0.6, 1.0],
+            ui_margin: 100.0,
         }
     }
 }
@@ -107,36 +112,59 @@ impl BoardView {
     /// Gets the size of an individual tile and the x and y padding values
     fn tile_padding(&self, controller: &BoardController) -> (f64, f64, f64) {
         let ref settings = self.settings;
-        let cell_max_height = settings.height / (controller.board.height() as f64 + 2.0);
-        let cell_max_width = settings.width / (controller.board.width() as f64 + 2.0);
+        let cell_max_height = (settings.height - settings.ui_margin) / (controller.board.height() as f64 + 2.0);
+        let cell_max_width = (settings.width - settings.ui_margin) / (controller.board.width() as f64 + 2.0);
         if cell_max_height < cell_max_width {
-            let space_used_x = cell_max_height * (controller.board.width() as f64 + 2.0);
+            let space_used_x = cell_max_height * (controller.board.width() as f64 + 2.0) + settings.ui_margin;
             (cell_max_height, (settings.width - space_used_x) / 2.0, 0.0)
         } else {
-            let space_used_y = cell_max_width * (controller.board.height() as f64 + 2.0);
+            let space_used_y = cell_max_width * (controller.board.height() as f64 + 2.0) + settings.ui_margin;
             (cell_max_width, 0.0, (settings.height - space_used_y) / 2.0)
         }
     }
 
     /// Gets the extents of the game and board
-    fn extents(&self, controller: &BoardController) -> (Extents, Extents) {
+    fn game_extents(&self, controller: &BoardController) -> (Extents, Extents) {
         let ref settings = self.settings;
         let (cell_size, x_padding, y_padding) = self.tile_padding(controller);
         let game = Extents {
             west: settings.position[0] + x_padding,
-            east: settings.position[0] + settings.width - x_padding,
+            east: settings.position[0] + settings.width - x_padding - settings.ui_margin,
             north: settings.position[1] + y_padding,
-            south: settings.position[1] + settings.height - y_padding,
+            south: settings.position[1] + settings.height - y_padding - settings.ui_margin,
         };
         let board = game.clone() - cell_size;
         (game, board)
     }
 
+    /// Gets the extents of the south and east UI panels
+    fn ui_extents(&self) -> (Extents, Extents) {
+        let ref settings = self.settings;
+        let global = Extents {
+            north: settings.position[1],
+            south: settings.position[1] + settings.height,
+            west: settings.position[0],
+            east: settings.position[0] + settings.width,
+        };
+        let south = Extents {
+            north: global.south - settings.ui_margin,
+            south: global.south,
+            west: global.west,
+            east: global.east,
+        };
+        let east = Extents {
+            north: global.north,
+            south: south.north,
+            west: global.east - settings.ui_margin,
+            east: global.east,
+        };
+        (south, east)
+    }
+
     /// Draw board
     pub fn draw<G: Graphics, C>(
         &self, controller: &BoardController,
-        glyphs: &mut C,
-        c: &Context, g: &mut G
+        glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
         use graphics::{Line, Rectangle};
 
@@ -147,12 +175,10 @@ impl BoardView {
         let (cell_size, _, _) = self.tile_padding(controller);
 
         // draw board
-        let (game, board) = self.extents(controller);
+        let (game, board) = self.game_extents(controller);
         let board_width = cell_size * board_tile_width as f64;
         let board_height = cell_size * board_tile_height as f64;
         let board_rect = [board.west, board.north, board_width, board_height];
-        Rectangle::new(settings.background_color)
-            .draw(board_rect, &c.draw_state, c.transform, g);
 
         // draw the tiles
         self.draw_tiles(controller, glyphs, c, g);
@@ -176,57 +202,71 @@ impl BoardView {
 
         // draw insert guides
         self.draw_insert_guides(controller, glyphs, c, g);
+
+        // draw UI
+        self.draw_ui(controller, glyphs, c, g);
     }
 
     fn draw_tiles<G: Graphics, C>(
         &self, controller: &BoardController,
-        _glyphs: &mut C,
-        c: &Context, g: &mut G
+        _glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
-        use graphics::Rectangle;
-
-        let ref settings = self.settings;
-
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
         let (cell_size, _, _) = self.tile_padding(controller);
-        let (_, board) = self.extents(controller);
-        let wall_width = cell_size * settings.wall_width;
+        let (_, board) = self.game_extents(controller);
 
-        let wall_rect = Rectangle::new(settings.wall_color);
         for j in 0..board_tile_height {
             for i in 0..board_tile_width {
                 let north = board.north + j as f64 * cell_size;
                 let south = north + cell_size;
-                let south_ish = south - wall_width;
                 let west = board.west + i as f64 * cell_size;
                 let east = west + cell_size;
-                let east_ish = east - wall_width;
-
-                wall_rect.draw([west, north, wall_width, wall_width], &c.draw_state, c.transform, g);
-                wall_rect.draw([east_ish, north, wall_width, wall_width], &c.draw_state, c.transform, g);
-                wall_rect.draw([west, south_ish, wall_width, wall_width], &c.draw_state, c.transform, g);
-                wall_rect.draw([east_ish, south_ish, wall_width, wall_width], &c.draw_state, c.transform, g);
-
-                let walled_directions = controller.board.get([i, j]).walls();
-
-                for d in walled_directions {
-                    let rect = match d {
-                        Direction::North => [west, north, cell_size, wall_width],
-                        Direction::South => [west, south_ish, cell_size, wall_width],
-                        Direction::East => [east_ish, north, wall_width, cell_size],
-                        Direction::West => [west, north, wall_width, cell_size],
-                    };
-                    wall_rect.draw(rect, &c.draw_state, c.transform, g);
-                }
+                let cell = Extents {
+                    north,
+                    south,
+                    east,
+                    west
+                };
+                self.draw_tile(controller, controller.board.get([i, j]), &cell, _glyphs, c, g);
             }
+        }
+    }
+
+    fn draw_tile<G: Graphics, C>(
+        &self, controller: &BoardController, tile: &Tile, outer: &Extents,
+        _glyphs: &mut C, c: &Context, g: &mut G
+    ) where C: CharacterCache<Texture = G::Texture> {
+        use graphics::Rectangle;
+        let ref settings = self.settings;
+
+        let (cell_size, _, _) = self.tile_padding(controller);
+        let wall_width = cell_size * settings.wall_width;
+        let inner = outer.clone() - wall_width;
+
+        Rectangle::new(settings.background_color)
+            .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, c.transform, g);
+
+        let wall_rect = Rectangle::new(settings.wall_color);
+        wall_rect.draw([outer.west, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
+        wall_rect.draw([inner.east, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
+        wall_rect.draw([outer.west, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
+        wall_rect.draw([inner.east, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
+        let walled_directions = tile.walls();
+        for d in walled_directions {
+            let rect = match d {
+                Direction::North => [outer.west, outer.north, cell_size, wall_width],
+                Direction::South => [outer.west, inner.south, cell_size, wall_width],
+                Direction::East => [inner.east, outer.north, wall_width, cell_size],
+                Direction::West => [outer.west, outer.north, wall_width, cell_size],
+            };
+            wall_rect.draw(rect, &c.draw_state, c.transform, g);
         }
     }
 
     fn draw_insert_guides<G: Graphics, C>(
         &self, controller: &BoardController,
-        glyphs: &mut C,
-        c: &Context, g: &mut G
+        _glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
         use graphics::Polygon;
 
@@ -235,7 +275,7 @@ impl BoardView {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
         let (cell_size, _, _) = self.tile_padding(controller);
-        let (game, board) = self.extents(controller);
+        let (game, board) = self.game_extents(controller);
         let wall_width = cell_size * settings.wall_width;
 
         let insert_guide = Polygon::new(settings.insert_guide_color);
@@ -278,6 +318,25 @@ impl BoardView {
             insert_guide.draw(&[[east, early_y], [east_ish, mid_y], [east, late_y]], &c.draw_state, c.transform, g);
             // draw west edge
             insert_guide.draw(&[[west, early_y], [west_ish, mid_y], [west, late_y]], &c.draw_state, c.transform, g);
+        }
+    }
+
+    fn draw_ui<G: Graphics, C>(
+        &self, controller: &BoardController,
+        _glyphs: &mut C, c: &Context, g: &mut G
+    ) where C: CharacterCache<Texture = G::Texture> {
+        let (cell_size, _, _) = self.tile_padding(controller);
+        let (south_panel, east_panel) = self.ui_extents();
+
+        // draw loose tile
+        {
+            let cell = Extents {
+                north: south_panel.north,
+                south: south_panel.north + cell_size,
+                west: south_panel.west,
+                east: south_panel.west + cell_size,
+            };
+            self.draw_tile(controller, &controller.board.loose_tile, &cell, _glyphs, c, g);
         }
     }
 }
