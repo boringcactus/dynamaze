@@ -51,7 +51,7 @@ fn main() {
         .expect("Could not load font");
 
     while let Some(e) = events.next(&mut window) {
-        board_controller.event(&board_view.settings, &e);
+        board_controller.event(&board_view, &e);
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
                 use graphics::{clear};

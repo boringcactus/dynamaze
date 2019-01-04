@@ -1,5 +1,6 @@
 //! Board view
 
+use std::cmp;
 use std::ops;
 
 use graphics::types::Color;
@@ -28,6 +29,46 @@ impl ops::Sub<f64> for Extents {
             east: self.east - rhs,
             west: self.west + rhs,
         }
+    }
+}
+
+impl PartialEq<Extents> for [f64; 2] {
+    fn eq(&self, other: &Extents) -> bool {
+        self.partial_cmp(other) == Some(cmp::Ordering::Equal)
+    }
+}
+
+impl PartialOrd<Extents> for [f64; 2] {
+    fn partial_cmp(&self, other: &Extents) -> Option<cmp::Ordering> {
+        use std::cmp::Ordering::*;
+        let [x, y] = self;
+        let result = match (x.partial_cmp(&other.west), x.partial_cmp(&other.east),
+            y.partial_cmp(&other.north), y.partial_cmp(&other.south)) {
+            // too far west
+            (Some(Less), _, _, _) => Greater,
+            // too far east
+            (_, Some(Greater), _, _) => Greater,
+            // too far north
+            (_, _, Some(Less), _) => Greater,
+            // too far south
+            (_, _, _, Some(Greater)) => Greater,
+            // entirely within
+            (Some(Greater), Some(Less), Some(Greater), Some(Less)) => Less,
+            // on west edge
+            (Some(Equal), _, _, _) => Equal,
+            // on east edge
+            (_, Some(Equal), _, _) => Equal,
+            // on north edge
+            (_, _, Some(Equal), _) => Equal,
+            // on south edge
+            (_, _, _, Some(Equal)) => Equal,
+            // this really shouldn't be possible, and the rust compiler warns about an unreachable pattern!
+            // thanks, rust!
+            // (Some(_), Some(_), Some(_), Some(_)) => panic!("Implausible bounds check for point in extents"),
+            // something is NaN or otherwise fucky
+            _ => return None
+        };
+        Some(result)
     }
 }
 
@@ -321,21 +362,30 @@ impl BoardView {
         }
     }
 
+    fn loose_tile_extents(&self, controller: &BoardController) -> Extents {
+        let (cell_size, _, _) = self.tile_padding(controller);
+        let (south_panel, _) = self.ui_extents();
+        Extents {
+            north: south_panel.north,
+            south: south_panel.north + cell_size,
+            west: south_panel.west,
+            east: south_panel.west + cell_size,
+        }
+    }
+
+    /// Check if the given position is within the loose tile area
+    pub fn in_loose_tile(&self, pos: &[f64; 2], controller: &BoardController) -> bool {
+        let cell = self.loose_tile_extents(controller);
+        pos < &cell
+    }
+
     fn draw_ui<G: Graphics, C>(
         &self, controller: &BoardController,
         _glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
-        let (cell_size, _, _) = self.tile_padding(controller);
-        let (south_panel, east_panel) = self.ui_extents();
-
         // draw loose tile
         {
-            let cell = Extents {
-                north: south_panel.north,
-                south: south_panel.north + cell_size,
-                west: south_panel.west,
-                east: south_panel.west + cell_size,
-            };
+            let cell = self.loose_tile_extents(controller);
             self.draw_tile(controller, &controller.board.loose_tile, &cell, _glyphs, c, g);
         }
     }

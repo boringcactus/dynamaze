@@ -3,7 +3,7 @@
 use piston::input::GenericEvent;
 
 use crate::Board;
-use crate::BoardViewSettings;
+use crate::BoardView;
 
 /// Handles events for DynaMaze game
 pub struct BoardController {
@@ -23,25 +23,20 @@ impl BoardController {
     }
 
     /// Handles events
-    pub fn event<E: GenericEvent>(&mut self, _settings: &BoardViewSettings, e: &E) {
-        use piston::input::{Button, Key};
+    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E) {
+        use piston::input::{Button, Key, MouseButton};
 
         if let Some(pos) = e.mouse_cursor_args() {
             self.cursor_pos = pos;
         }
 
-//        if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-//            // relative coordinates
-//            let x = self.cursor_pos[0] - pos[0];
-//            let y = self.cursor_pos[1] - pos[1];
-//            // if in board...
-//            if x >= 0.0 && x < size && y >= 0.0 && y < size {
-//                // ...compute cell position
-//                let cell_x = (x / size * 9.0) as usize;
-//                let cell_y = (y / size * 9.0) as usize;
-//                self.selection = Some([cell_x, cell_y]);
-//            }
-//        }
+        if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
+            // if clicked inside the loose tile...
+            if view.in_loose_tile(&self.cursor_pos, self) {
+                // rotate the loose tile
+                self.board.loose_tile.rotate();
+            }
+        }
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {

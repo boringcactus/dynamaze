@@ -107,6 +107,11 @@ impl Tile {
     pub fn walls(&self) -> Vec<Direction> {
         self.shape.walls().iter().map(|d| *d * self.orientation).collect()
     }
+
+    /// Rotate this tile clockwise
+    pub fn rotate(&mut self) {
+        self.orientation = Direction::East * self.orientation;
+    }
 }
 
 impl Distribution<Tile> for Standard {
