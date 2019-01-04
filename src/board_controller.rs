@@ -45,10 +45,10 @@ impl BoardController {
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
-                Key::Right => self.board = Board::new(self.board.width() + 1, self.board.height()),
-                Key::Left => self.board = Board::new(self.board.width() - 1, self.board.height()),
-                Key::Up => self.board = Board::new(self.board.width(), self.board.height() - 1),
-                Key::Down => self.board = Board::new(self.board.width(), self.board.height() + 1),
+                Key::Right => self.board = Board::new(self.board.width() + 2, self.board.height()),
+                Key::Left => self.board = Board::new(self.board.width() - 2, self.board.height()),
+                Key::Up => self.board = Board::new(self.board.width(), self.board.height() - 2),
+                Key::Down => self.board = Board::new(self.board.width(), self.board.height() + 2),
                 _ => {}
             }
         }
