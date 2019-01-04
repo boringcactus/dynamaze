@@ -1,0 +1,20 @@
+language: rust
+rust: stable
+cache: cargo
+os:
+  - linux
+  - osx
+  - windows
+script:
+  - cargo test --verbose
+  - cargo build --release
+  - mkdir dist
+  - cp -r assets dist/
+  - cp target/debug/dynamaze dist/
+  - # export BUTLER_DIST=linux
+  - # test "$TRAVIS_OS_NAME" = "linux" || export BUTLER_DIST=darwin
+  - # echo $BUTLER_DIST
+  - # curl -o butler https://dl.itch.ovh/butler/$BUTLER_DIST-amd64/head/butler
+  - # chmod +x butler
+  - # ./butler -V
+  - # ./butler push dist boringcactus/circumvention-chronicles:$TRAVIS_OS_NAME-post-jam
