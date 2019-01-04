@@ -305,6 +305,65 @@ impl BoardView {
         }
     }
 
+    fn insert_guides(&self, controller: &BoardController) -> Vec<(Direction, Vec<Extents>)> {
+        let board_tile_width = controller.board.width();
+        let board_tile_height = controller.board.height();
+        let (cell_size, _, _) = self.tile_padding(controller);
+        let (game, board) = self.game_extents(controller);
+
+        let mut result = vec![];
+
+        let mut north = vec![];
+        let mut south = vec![];
+        for i in 0..(board_tile_width / 2) {
+            let west = board.west + (2 * i + 1) as f64 * cell_size;
+            let east = west + cell_size;
+
+            let north_extents = Extents {
+                north: game.north,
+                south: board.north,
+                west,
+                east,
+            };
+            north.push(north_extents);
+
+            let south_extents = Extents {
+                north: board.south,
+                south: game.south,
+                east,
+                west,
+            };
+            south.push(south_extents);
+        }
+        result.push((Direction::North, north));
+        result.push((Direction::South, south));
+        let mut east = vec![];
+        let mut west = vec![];
+        for j in 0..(board_tile_height / 2) {
+            let north = board.north + (2 * j + 1) as f64 * cell_size;
+            let south = north + cell_size;
+
+            let west_extents = Extents {
+                north,
+                south,
+                west: game.west,
+                east: board.west,
+            };
+            west.push(west_extents);
+
+            let east_extents = Extents {
+                north,
+                south,
+                west: board.east,
+                east: game.east,
+            };
+            east.push(east_extents);
+        }
+        result.push((Direction::East, east));
+        result.push((Direction::West, west));
+        result
+    }
+
     fn draw_insert_guides<G: Graphics, C>(
         &self, controller: &BoardController,
         _glyphs: &mut C, c: &Context, g: &mut G
@@ -313,56 +372,46 @@ impl BoardView {
 
         let ref settings = self.settings;
 
-        let board_tile_width = controller.board.width();
-        let board_tile_height = controller.board.height();
         let (cell_size, _, _) = self.tile_padding(controller);
-        let (game, board) = self.game_extents(controller);
         let wall_width = cell_size * settings.wall_width;
 
         let insert_guide = Polygon::new(settings.insert_guide_color);
-        for i in 0..(board_tile_width / 2) {
-            let north = game.north + wall_width;
-            let north_ish = board.north - wall_width;
-            let south = game.south - wall_width;
-            let south_ish = board.south + wall_width;
-
-            let offset = (2 * i + 1) as f64 * cell_size;
-            let early_offset = offset + wall_width;
-            let mid_offset = offset + cell_size / 2.0;
-            let late_offset = offset + cell_size - wall_width;
-
-            let early_x = board.west + early_offset;
-            let mid_x = board.west + mid_offset;
-            let late_x = board.west + late_offset;
-
-            // draw north edge
-            insert_guide.draw(&[[early_x, north], [mid_x, north_ish], [late_x, north]], &c.draw_state, c.transform, g);
-            // draw south edge
-            insert_guide.draw(&[[early_x, south], [mid_x, south_ish], [late_x, south]], &c.draw_state, c.transform, g);
-        }
-        for j in 0..(board_tile_height / 2) {
-            let west = game.west + wall_width;
-            let west_ish = board.west - wall_width;
-            let east = game.east - wall_width;
-            let east_ish = board.east + wall_width;
-
-            let offset = (2 * j + 1) as f64 * cell_size;
-            let early_offset = offset + wall_width;
-            let mid_offset = offset + cell_size / 2.0;
-            let late_offset = offset + cell_size - wall_width;
-
-            let early_y = board.north + early_offset;
-            let mid_y = board.north + mid_offset;
-            let late_y = board.north + late_offset;
-
-            // draw east edge
-            insert_guide.draw(&[[east, early_y], [east_ish, mid_y], [east, late_y]], &c.draw_state, c.transform, g);
-            // draw west edge
-            insert_guide.draw(&[[west, early_y], [west_ish, mid_y], [west, late_y]], &c.draw_state, c.transform, g);
+        for (dir, guides) in self.insert_guides(controller) {
+            for guide in guides {
+                let guide = guide - wall_width;
+                let mid_x = (guide.east + guide.west) / 2.0;
+                let mid_y = (guide.north + guide.south) / 2.0;
+                let rect = match dir {
+                    Direction::North => [[guide.west, guide.north], [mid_x, guide.south], [guide.east, guide.north]],
+                    Direction::South => [[guide.west, guide.south], [mid_x, guide.north], [guide.east, guide.south]],
+                    Direction::West => [[guide.west, guide.north], [guide.east, mid_y], [guide.west, guide.south]],
+                    Direction::East => [[guide.east, guide.north], [guide.west, mid_y], [guide.east, guide.south]],
+                };
+                insert_guide.draw(&rect, &c.draw_state, c.transform, g);
+            }
         }
     }
 
+    /// Checks if the given position is in an insert guide or not
+    pub fn in_insert_guide(&self, pos: &[f64; 2], controller: &BoardController) -> Option<(Direction, usize)> {
+        for (dir, guides) in self.insert_guides(controller) {
+            for (i, guide) in guides.into_iter().enumerate() {
+                if pos < &guide {
+                    return Some((dir, i));
+                }
+            }
+        }
+        None
+    }
+
     fn loose_tile_extents(&self, controller: &BoardController) -> Extents {
+        if let Some((target_dir, idx)) = controller.board.loose_tile_position {
+            for (dir, guides) in self.insert_guides(controller) {
+                if dir == target_dir {
+                    return guides[idx].clone();
+                }
+            }
+        }
         let (cell_size, _, _) = self.tile_padding(controller);
         let (south_panel, _) = self.ui_extents();
         Extents {

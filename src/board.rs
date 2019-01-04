@@ -9,6 +9,8 @@ pub struct Board {
     cells: Vec<Vec<Tile>>,
     /// Loose tile
     pub loose_tile: Tile,
+    /// Loose tile position
+    pub loose_tile_position: Option<(Direction, usize)>,
 }
 
 impl Board {
@@ -29,6 +31,7 @@ impl Board {
         Board {
             cells,
             loose_tile: random(),
+            loose_tile_position: None,
         }
     }
 
@@ -45,5 +48,38 @@ impl Board {
     /// Gets the height of the board
     pub fn height(&self) -> usize {
         self.cells.len()
+    }
+
+    fn valid(&self, ind: (usize, usize), dir: Direction) -> bool {
+        let (j, i) = ind;
+        match dir {
+            Direction::North => j > 0,
+            Direction::South => j < self.height() - 1,
+            Direction::West => i > 0,
+            Direction::East => i < self.width() - 1,
+        }
+    }
+
+    /// Inserts the loose tile at its current position
+    pub fn insert_loose_tile(&mut self) {
+        if let Some((dir, guide_idx)) = self.loose_tile_position {
+            let target_idx = 2 * guide_idx + 1;
+            // general process: copy into the current position, so start opposite correct margin
+            let (mut j, mut i) = match dir {
+                Direction::North => (self.height() - 1, target_idx),
+                Direction::South => (0, target_idx),
+                Direction::West => (target_idx, self.width() - 1),
+                Direction::East => (target_idx, 0),
+            };
+            let next_loose_tile = self.cells[j][i].clone();
+            while self.valid((j, i), dir) {
+                let (next_j, next_i) = (j, i) + dir;
+                self.cells[j][i] = self.cells[next_j][next_i].clone();
+                j = next_j;
+                i = next_i;
+            }
+            self.cells[j][i] = self.loose_tile.clone();
+            self.loose_tile = next_loose_tile;
+        }
     }
 }

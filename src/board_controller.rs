@@ -28,13 +28,20 @@ impl BoardController {
 
         if let Some(pos) = e.mouse_cursor_args() {
             self.cursor_pos = pos;
+            self.board.loose_tile_position = view.in_insert_guide(&pos, self);
         }
 
         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
             // if clicked inside the loose tile...
             if view.in_loose_tile(&self.cursor_pos, self) {
-                // rotate the loose tile
-                self.board.loose_tile.rotate();
+                // if the tile isn't aligned with a guide...
+                if self.board.loose_tile_position.is_none() {
+                    // rotate the loose tile
+                    self.board.loose_tile.rotate();
+                } else {
+                    // otherwise, insert the tile
+                    self.board.insert_loose_tile();
+                }
             }
         }
 

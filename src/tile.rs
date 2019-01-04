@@ -17,6 +17,20 @@ pub enum Direction {
     West,
 }
 
+impl ops::Add<Direction> for (usize, usize) {
+    type Output = (usize, usize);
+
+    fn add(self, rhs: Direction) -> (usize, usize) {
+        let (j, i) = self;
+        match rhs {
+            Direction::North => (j-1, i),
+            Direction::South => (j+1, i),
+            Direction::East => (j, i+1),
+            Direction::West => (j, i-1),
+        }
+    }
+}
+
 impl ops::Mul<Direction> for Direction {
     type Output = Direction;
 
@@ -53,6 +67,7 @@ impl Distribution<Direction> for Standard {
 }
 
 /// Tile shapes
+#[derive(Clone)]
 pub enum Shape {
     /// Two connections, 90 degree angle (canonically North / East)
     L,
@@ -91,6 +106,7 @@ impl Distribution<Shape> for Standard {
 }
 
 /// Contents of a tile
+#[derive(Clone)]
 pub struct Tile {
     /// Shape of the tile
     pub shape: Shape,
