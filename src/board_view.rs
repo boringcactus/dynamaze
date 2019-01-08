@@ -279,6 +279,24 @@ impl BoardView {
         }
     }
 
+    /// Checks if a given position is within a tile, and returns that tile's (row, col)
+    pub fn in_tile(&self, pos: &[f64; 2], controller: &BoardController) -> Option<(usize, usize)> {
+        // TODO don't do this dumb thing
+
+        let board_tile_width = controller.board.width();
+        let board_tile_height = controller.board.height();
+
+        for j in 0..board_tile_height {
+            for i in 0..board_tile_width {
+                let cell = self.tile_extents(controller, j, i);
+                if pos < &cell {
+                    return Some((j, i));
+                }
+            }
+        }
+        None
+    }
+
     fn draw_tiles<G: Graphics, C>(
         &self, controller: &BoardController,
         _glyphs: &mut C, c: &Context, g: &mut G
@@ -286,7 +304,7 @@ impl BoardView {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
 
-        let current_player_pos = controller.board.player_tokens.get(controller.active_player_id()).unwrap().position;
+        let current_player_pos = controller.board.player_pos(controller.active_player_id());
         let reachable = controller.board.reachable_coords(current_player_pos);
 
         for j in 0..board_tile_height {

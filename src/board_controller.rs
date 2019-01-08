@@ -54,6 +54,11 @@ impl BoardController {
                     // otherwise, insert the tile
                     self.board.insert_loose_tile();
                 }
+            } else if let Some(pos) = view.in_tile(&self.cursor_pos, self) {
+                if self.board.reachable_coords(self.board.player_pos(self.active_player_id())).contains(&pos) {
+                    let id = *self.active_player_id();
+                    self.board.move_player(&id, pos);
+                }
             }
         }
 

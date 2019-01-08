@@ -5,6 +5,7 @@ use crate::{Direction, Player, PlayerID, Shape, Tile};
 use rand::prelude::*;
 
 /// Information about a player's token on the board
+#[derive(Clone)]
 pub struct PlayerToken {
     /// ID of player the token is for
     pub player_id: PlayerID,
@@ -112,7 +113,43 @@ impl Board {
             }
             self.cells[j][i] = self.loose_tile.clone();
             self.loose_tile = next_loose_tile;
+            // move all tokens
+            let move_dir = dir * Direction::South;
+            self.player_tokens = self.player_tokens.iter().map(|(id, token)| {
+                let (old_row, old_col) = token.position;
+                let should_be_target_idx = match move_dir {
+                    Direction::North | Direction::South => old_col,
+                    Direction::East | Direction::West => old_row,
+                };
+                if should_be_target_idx != target_idx {
+                    return (*id, token.clone());
+                }
+                let new_position = if self.valid(token.position, move_dir) {
+                    token.position + (dir * Direction::South)
+                } else {
+                    let (old_row, old_col) = token.position;
+                    let (new_row, new_col) = match move_dir {
+                        Direction::East | Direction::West => (old_row, (old_col + self.width())) + move_dir,
+                        Direction::North | Direction::South => ((old_row + self.height()), old_col) + move_dir,
+                    };
+                    (new_row % self.width(), new_col % self.height())
+                };
+                (*id, PlayerToken {
+                    player_id: *id,
+                    position: new_position,
+                })
+            }).collect();
         }
+    }
+
+    /// Gets the (row, col) position of the given player
+    pub fn player_pos(&self, id: &PlayerID) -> (usize, usize) {
+        self.player_tokens.get(id).expect("No token for player with given ID").position
+    }
+
+    /// Moves the given player to the given (row, col)
+    pub fn move_player(&mut self, id: &PlayerID, pos: (usize, usize)) {
+        self.player_tokens.get_mut(id).expect("No token for player with given ID").position = pos;
     }
 
     /// Gets all the coordinates reachable from the given (row, col)
