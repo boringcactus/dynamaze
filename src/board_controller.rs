@@ -38,11 +38,11 @@ impl BoardController {
             self.board.loose_tile_position = view.in_insert_guide(&pos, self);
         }
 
-        if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
+        if let Some(Button::Mouse(button)) = e.press_args() {
             // if clicked inside the loose tile...
             if view.in_loose_tile(&self.cursor_pos, self) {
-                // if the tile isn't aligned with a guide...
-                if self.board.loose_tile_position.is_none() {
+                // if the tile isn't aligned with a guide, or the button wasn't left...
+                if self.board.loose_tile_position.is_none() || button != MouseButton::Left {
                     // rotate the loose tile
                     self.board.loose_tile.rotate();
                 } else {
