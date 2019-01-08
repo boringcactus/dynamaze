@@ -3,7 +3,7 @@
 use std::cmp;
 use std::ops;
 
-use graphics::types::Color;
+use graphics::types::{Color, Rectangle};
 use graphics::{Context, Graphics};
 use graphics::character::CharacterCache;
 
@@ -69,6 +69,16 @@ impl PartialOrd<Extents> for [f64; 2] {
             _ => return None
         };
         Some(result)
+    }
+}
+
+impl Into<Rectangle> for Extents {
+    fn into(self) -> Rectangle {
+        let x = self.west;
+        let y = self.north;
+        let w = self.east - self.west;
+        let h = self.south - self.north;
+        [x, y, w, h]
     }
 }
 
@@ -244,8 +254,26 @@ impl BoardView {
         // draw insert guides
         self.draw_insert_guides(controller, glyphs, c, g);
 
+        // draw player tokens
+        self.draw_player_tokens(controller, glyphs, c, g);
+
         // draw UI
         self.draw_ui(controller, glyphs, c, g);
+    }
+
+    fn tile_extents(&self, controller: &BoardController, row: usize, col: usize) -> Extents {
+        let (cell_size, _, _) = self.tile_padding(controller);
+        let (_, board) = self.game_extents(controller);
+        let north = board.north + row as f64 * cell_size;
+        let south = north + cell_size;
+        let west = board.west + col as f64 * cell_size;
+        let east = west + cell_size;
+        Extents {
+            north,
+            south,
+            east,
+            west
+        }
     }
 
     fn draw_tiles<G: Graphics, C>(
@@ -254,21 +282,10 @@ impl BoardView {
     ) where C: CharacterCache<Texture = G::Texture> {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
-        let (cell_size, _, _) = self.tile_padding(controller);
-        let (_, board) = self.game_extents(controller);
 
         for j in 0..board_tile_height {
             for i in 0..board_tile_width {
-                let north = board.north + j as f64 * cell_size;
-                let south = north + cell_size;
-                let west = board.west + i as f64 * cell_size;
-                let east = west + cell_size;
-                let cell = Extents {
-                    north,
-                    south,
-                    east,
-                    west
-                };
+                let cell = self.tile_extents(controller, j, i);
                 self.draw_tile(controller, controller.board.get([i, j]), &cell, _glyphs, c, g);
             }
         }
@@ -426,6 +443,30 @@ impl BoardView {
     pub fn in_loose_tile(&self, pos: &[f64; 2], controller: &BoardController) -> bool {
         let cell = self.loose_tile_extents(controller);
         pos < &cell
+    }
+
+    fn draw_player_tokens<G: Graphics, C>(
+        &self, controller: &BoardController,
+        _glyphs: &mut C, c: &Context, g: &mut G
+    ) where C: CharacterCache<Texture = G::Texture> {
+        use graphics::Ellipse;
+
+        let ref settings = self.settings;
+
+        let (cell_size, _, _) = self.tile_padding(controller);
+        let wall_width = cell_size * settings.wall_width;
+
+        for token in &controller.board.player_tokens {
+            let (row, col) = token.position;
+            let player = match controller.players.get(&token.player_id) {
+                Some(x) => x,
+                None => continue,
+            };
+            let tile = self.tile_extents(controller, row, col);
+
+            let token_ellipse = Ellipse::new(player.color);
+            token_ellipse.draw(tile - wall_width, &c.draw_state, c.transform, g);
+        }
     }
 
     fn draw_ui<G: Graphics, C>(

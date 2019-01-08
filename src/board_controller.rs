@@ -2,8 +2,11 @@
 
 use piston::input::GenericEvent;
 
+use std::collections::BTreeMap;
+
 use crate::Board;
 use crate::BoardView;
+use crate::{Player, PlayerID};
 
 /// Handles events for DynaMaze game
 pub struct BoardController {
@@ -11,14 +14,18 @@ pub struct BoardController {
     pub board: Board,
     /// Mouse position
     pub cursor_pos: [f64; 2],
+    /// Players
+    pub players: BTreeMap<PlayerID, Player>,
 }
 
 impl BoardController {
-    /// Creates a new board controller
-    pub fn new(board: Board) -> BoardController {
+    /// Creates a new board controller with a new board
+    pub fn new(width: usize, height: usize, player_list: Vec<Player>) -> BoardController {
+        let players = player_list.into_iter().map(|p| (p.id, p)).collect();
         BoardController {
-            board,
+            board: Board::new(width, height, &players),
             cursor_pos: [0.0; 2],
+            players,
         }
     }
 
@@ -47,10 +54,10 @@ impl BoardController {
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
             match key {
-                Key::Right => self.board = Board::new(self.board.width() + 2, self.board.height()),
-                Key::Left => self.board = Board::new(self.board.width() - 2, self.board.height()),
-                Key::Up => self.board = Board::new(self.board.width(), self.board.height() - 2),
-                Key::Down => self.board = Board::new(self.board.width(), self.board.height() + 2),
+                Key::Right => self.board = Board::new(self.board.width() + 2, self.board.height(), &self.players),
+                Key::Left => self.board = Board::new(self.board.width() - 2, self.board.height(), &self.players),
+                Key::Up => self.board = Board::new(self.board.width(), self.board.height() - 2, &self.players),
+                Key::Down => self.board = Board::new(self.board.width(), self.board.height() + 2, &self.players),
                 _ => {}
             }
         }

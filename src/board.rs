@@ -1,7 +1,26 @@
 //! Board logic
 
-use crate::{Direction, Shape, Tile};
+use std::collections::BTreeMap;
+use crate::{Direction, Player, PlayerID, Shape, Tile};
 use rand::prelude::*;
+
+/// Information about a player's token on the board
+pub struct PlayerToken {
+    /// ID of player the token is for
+    pub player_id: PlayerID,
+    /// Position of token (row, col)
+    pub position: (usize, usize),
+}
+
+impl PlayerToken {
+    /// Create a new token for the given player at the given position
+    pub fn new(player: &Player, position: (usize, usize)) -> PlayerToken {
+        PlayerToken {
+            player_id: player.id,
+            position
+        }
+    }
+}
 
 /// Information about board state
 pub struct Board {
@@ -11,11 +30,13 @@ pub struct Board {
     pub loose_tile: Tile,
     /// Loose tile position
     pub loose_tile_position: Option<(Direction, usize)>,
+    /// Player tokens
+    pub player_tokens: Vec<PlayerToken>,
 }
 
 impl Board {
     /// Creates a new board
-    pub fn new(width: usize, height: usize) -> Board {
+    pub fn new(width: usize, height: usize, players: &BTreeMap<PlayerID, Player>) -> Board {
         let mut cells = vec![];
         for _ in 0..height {
             let mut row = vec![];
@@ -28,10 +49,21 @@ impl Board {
         cells[0][width - 1] = Tile{shape: Shape::L, orientation: Direction::South};
         cells[height - 1][0] = Tile{shape: Shape::L, orientation: Direction::North};
         cells[height - 1][width - 1] = Tile{shape: Shape::L, orientation: Direction::West};
+        let player_tokens = players.iter().enumerate().map(|(i, (_, player))| {
+            let position = match i {
+                0 => (0, 0),
+                1 => (height - 1, width - 1),
+                2 => (0, width - 1),
+                3 => (height - 1, 0),
+                _ => panic!("Too many players"),
+            };
+            PlayerToken::new(player, position)
+        }).collect();
         Board {
             cells,
             loose_tile: random(),
             loose_tile_position: None,
+            player_tokens,
         }
     }
 

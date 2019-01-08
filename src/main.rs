@@ -16,11 +16,13 @@ use opengl_graphics::{ GlGraphics, OpenGL, Filter, GlyphCache, TextureSettings }
 pub use crate::board::Board;
 pub use crate::board_controller::BoardController;
 pub use crate::board_view::{BoardView, BoardViewSettings};
+pub use crate::player::{Player, PlayerID};
 pub use crate::tile::{Tile, Direction, Shape};
 
 mod board;
 mod board_controller;
 mod board_view;
+mod player;
 mod tile;
 
 fn main() {
@@ -41,8 +43,10 @@ fn main() {
     let mut events = Events::new(EventSettings::new());
     let mut gl = GlGraphics::new(opengl);
 
-    let board = Board::new(7, 7);
-    let mut board_controller = BoardController::new(board);
+    let players = vec![
+        Player::new("Melody".to_string(), [0.7, 0.2, 0.7, 1.0]),
+    ];
+    let mut board_controller = BoardController::new(7, 7, players);
     let board_view_settings = BoardViewSettings::new([window_size[0] as f64, window_size[1] as f64]);
     let board_view = BoardView::new(board_view_settings);
 
