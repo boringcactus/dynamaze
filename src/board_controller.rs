@@ -29,6 +29,11 @@ impl BoardController {
         }
     }
 
+    /// Gets the ID of the player whose turn it is
+    pub fn active_player_id(&self) -> &PlayerID {
+        self.players.keys().nth(0).unwrap()
+    }
+
     /// Handles events
     pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E) {
         use piston::input::{Button, Key, MouseButton};

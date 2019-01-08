@@ -92,6 +92,8 @@ pub struct BoardViewSettings {
     pub height: f64,
     /// Background color
     pub background_color: Color,
+    /// Reachable background color
+    pub reachable_background_color: Color,
     /// Border color
     pub border_color: Color,
     /// Edge color around the whole board
@@ -129,6 +131,7 @@ impl BoardViewSettings {
             width,
             height,
             background_color: [0.8, 0.8, 1.0, 1.0],
+            reachable_background_color: [0.9, 0.9, 1.0, 1.0],
             border_color: [0.0, 0.0, 0.2, 1.0],
             board_edge_color: [0.0, 0.0, 0.2, 1.0],
             section_edge_color: [0.0, 0.0, 0.2, 1.0],
@@ -283,16 +286,24 @@ impl BoardView {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
 
+        let current_player_pos = controller.board.player_tokens.get(controller.active_player_id()).unwrap().position;
+        let reachable = controller.board.reachable_coords(current_player_pos);
+
         for j in 0..board_tile_height {
             for i in 0..board_tile_width {
                 let cell = self.tile_extents(controller, j, i);
-                self.draw_tile(controller, controller.board.get([i, j]), &cell, _glyphs, c, g);
+                let color = if reachable.contains(&(j, i)) {
+                    self.settings.reachable_background_color
+                } else {
+                    self.settings.background_color
+                };
+                self.draw_tile(controller, controller.board.get([i, j]), &cell, color, _glyphs, c, g);
             }
         }
     }
 
     fn draw_tile<G: Graphics, C>(
-        &self, controller: &BoardController, tile: &Tile, outer: &Extents,
+        &self, controller: &BoardController, tile: &Tile, outer: &Extents, background_color: Color,
         _glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
         use graphics::Rectangle;
@@ -302,7 +313,7 @@ impl BoardView {
         let wall_width = cell_size * settings.wall_width;
         let inner = outer.clone() - wall_width;
 
-        Rectangle::new(settings.background_color)
+        Rectangle::new(background_color)
             .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, c.transform, g);
 
         let wall_rect = Rectangle::new(settings.wall_color);
@@ -456,7 +467,7 @@ impl BoardView {
         let (cell_size, _, _) = self.tile_padding(controller);
         let wall_width = cell_size * settings.wall_width;
 
-        for token in &controller.board.player_tokens {
+        for (_, token) in &controller.board.player_tokens {
             let (row, col) = token.position;
             let player = match controller.players.get(&token.player_id) {
                 Some(x) => x,
@@ -476,7 +487,7 @@ impl BoardView {
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
-            self.draw_tile(controller, &controller.board.loose_tile, &cell, _glyphs, c, g);
+            self.draw_tile(controller, &controller.board.loose_tile, &cell, self.settings.background_color, _glyphs, c, g);
         }
     }
 }

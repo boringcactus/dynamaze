@@ -1,6 +1,6 @@
 //! Board logic
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use crate::{Direction, Player, PlayerID, Shape, Tile};
 use rand::prelude::*;
 
@@ -31,7 +31,7 @@ pub struct Board {
     /// Loose tile position
     pub loose_tile_position: Option<(Direction, usize)>,
     /// Player tokens
-    pub player_tokens: Vec<PlayerToken>,
+    pub player_tokens: BTreeMap<PlayerID, PlayerToken>,
 }
 
 impl Board {
@@ -57,7 +57,7 @@ impl Board {
                 3 => (height - 1, 0),
                 _ => panic!("Too many players"),
             };
-            PlayerToken::new(player, position)
+            (player.id, PlayerToken::new(player, position))
         }).collect();
         Board {
             cells,
@@ -113,5 +113,34 @@ impl Board {
             self.cells[j][i] = self.loose_tile.clone();
             self.loose_tile = next_loose_tile;
         }
+    }
+
+    /// Gets all the coordinates reachable from the given (row, col)
+    pub fn reachable_coords(&self, from: (usize, usize)) -> HashSet<(usize, usize)> {
+        // result contains everything seen, frontier contains only things not yet scanned
+        let mut result = HashSet::new();
+        result.insert(from);
+        let mut frontier = vec![from];
+        // while frontier is nonempty...
+        while let Some((curr_row, curr_col)) = frontier.pop() {
+            // for each reachable direction...
+            for dir in self.cells[curr_row][curr_col].paths() {
+                // if it doesn't fall off the board...
+                if self.valid((curr_row, curr_col), dir) {
+                    // find the connecting tile
+                    let (next_row, next_col) = (curr_row, curr_col) + dir;
+                    // if that tile connects up as well...
+                    if self.cells[next_row][next_col].paths().contains(&(dir * Direction::South)) {
+                        // if we've never seen that location before...
+                        if !result.contains(&(next_row, next_col)) {
+                            // add it to frontier and result
+                            frontier.push((next_row, next_col));
+                            result.insert((next_row, next_col));
+                        }
+                    }
+                }
+            }
+        }
+        result
     }
 }
