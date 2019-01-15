@@ -322,9 +322,9 @@ impl BoardView {
 
     fn draw_tile<G: Graphics, C>(
         &self, controller: &BoardController, tile: &Tile, outer: &Extents, background_color: Color,
-        _glyphs: &mut C, c: &Context, g: &mut G
+        glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
-        use graphics::Rectangle;
+        use graphics::{Rectangle, Image, Transformed};
         let ref settings = self.settings;
 
         let (cell_size, _, _) = self.tile_padding(controller);
@@ -348,6 +348,30 @@ impl BoardView {
                 Direction::West => [outer.west, outer.north, wall_width, cell_size],
             };
             wall_rect.draw(rect, &c.draw_state, c.transform, g);
+        }
+
+        let text_image = Image::new_color(settings.text_color);
+        if let Some(ref item) = tile.item {
+            let ch = item.char();
+            let pos = [
+                inner.west,
+                inner.south
+            ];
+            if let Ok(character) = glyphs.character(34, ch) {
+                let ch_center_x = pos[0] + character.left() + character.width() / 2.0;
+                let ch_center_y = pos[1] - character.top() / 2.0;
+                let ch_offset_x = -character.width() / 2.0;
+                let ch_offset_y = -character.top() / 2.0;
+                let rad = tile.orientation.rad();
+                let transform = c.transform
+                    .trans(ch_center_x, ch_center_y)
+                    .rot_rad(rad)
+                    .append_transform(graphics::math::translate([ch_offset_x, ch_offset_y]));
+                text_image.draw(character.texture,
+                                &c.draw_state,
+                                transform,
+                                g);
+            }
         }
     }
 

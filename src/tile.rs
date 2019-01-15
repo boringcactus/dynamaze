@@ -1,8 +1,10 @@
 //! Tile logic
 
 use std::ops;
+use std::f64::consts;
 use rand::prelude::*;
 use rand::distributions::{Distribution, Standard};
+use crate::Item;
 
 /// Cardinal directions
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -15,6 +17,18 @@ pub enum Direction {
     East,
     /// Left
     West,
+}
+
+impl Direction {
+    /// Gets the radian rotation of this direction
+    pub fn rad(&self) -> f64 {
+        match self {
+            &Direction::North => 0.0,
+            &Direction::East => consts::PI / 2.0,
+            &Direction::South => consts::PI,
+            &Direction::West => consts::PI * 3.0 / 2.0,
+        }
+    }
 }
 
 impl ops::Add<Direction> for (usize, usize) {
@@ -112,6 +126,8 @@ pub struct Tile {
     pub shape: Shape,
     /// Orientation of the tile
     pub orientation: Direction,
+    /// Item held by the tile
+    pub item: Option<Item>,
 }
 
 impl Tile {
@@ -134,9 +150,11 @@ impl Distribution<Tile> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tile {
         let shape = rng.gen();
         let orientation = rng.gen();
+        let item = rng.gen();
         Tile {
             shape,
-            orientation
+            orientation,
+            item,
         }
     }
 }

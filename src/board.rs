@@ -46,10 +46,10 @@ impl Board {
             }
             cells.push(row);
         }
-        cells[0][0] = Tile{shape: Shape::L, orientation: Direction::East};
-        cells[0][width - 1] = Tile{shape: Shape::L, orientation: Direction::South};
-        cells[height - 1][0] = Tile{shape: Shape::L, orientation: Direction::North};
-        cells[height - 1][width - 1] = Tile{shape: Shape::L, orientation: Direction::West};
+        cells[0][0] = Tile{shape: Shape::L, orientation: Direction::East, item: None};
+        cells[0][width - 1] = Tile{shape: Shape::L, orientation: Direction::South, item: None};
+        cells[height - 1][0] = Tile{shape: Shape::L, orientation: Direction::North, item: None};
+        cells[height - 1][width - 1] = Tile{shape: Shape::L, orientation: Direction::West, item: None};
         let player_tokens = players.iter().enumerate().map(|(i, (_, player))| {
             let position = match i {
                 0 => (0, 0),
