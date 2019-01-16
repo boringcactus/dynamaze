@@ -19,6 +19,12 @@ struct Extents {
     west: f64,
 }
 
+impl Extents {
+    fn center(&self) -> [f64; 2] {
+        [(self.west + self.east) / 2.0, (self.north + self.south) / 2.0]
+    }
+}
+
 impl ops::Sub<f64> for Extents {
     type Output = Extents;
 
@@ -120,6 +126,8 @@ pub struct BoardViewSettings {
     pub insert_guide_color: Color,
     /// UI margin size
     pub ui_margin: f64,
+    /// Font size
+    pub font_size: u32,
 }
 
 impl BoardViewSettings {
@@ -145,6 +153,7 @@ impl BoardViewSettings {
             wall_width: 0.3,
             insert_guide_color: [0.6, 0.2, 0.6, 1.0],
             ui_margin: 100.0,
+            font_size: 25,
         }
     }
 }
@@ -353,13 +362,10 @@ impl BoardView {
         let text_image = Image::new_color(settings.text_color);
         if let Some(ref item) = tile.item {
             let ch = item.char();
-            let pos = [
-                inner.west,
-                inner.south
-            ];
-            if let Ok(character) = glyphs.character(34, ch) {
-                let ch_center_x = pos[0] + character.left() + character.width() / 2.0;
-                let ch_center_y = pos[1] - character.top() / 2.0;
+            let pos = inner.center();
+            if let Ok(character) = glyphs.character(settings.font_size, ch) {
+                let ch_center_x = pos[0];
+                let ch_center_y = pos[1];
                 let ch_offset_x = -character.width() / 2.0;
                 let ch_offset_y = -character.top() / 2.0;
                 let rad = tile.orientation.rad();
@@ -367,10 +373,7 @@ impl BoardView {
                     .trans(ch_center_x, ch_center_y)
                     .rot_rad(rad)
                     .append_transform(graphics::math::translate([ch_offset_x, ch_offset_y]));
-                text_image.draw(character.texture,
-                                &c.draw_state,
-                                transform,
-                                g);
+                text_image.draw(character.texture, &c.draw_state, transform, g);
             }
         }
     }
