@@ -38,6 +38,7 @@ pub struct Board {
 impl Board {
     /// Creates a new board
     pub fn new(width: usize, height: usize, players: &BTreeMap<PlayerID, Player>) -> Board {
+        // build tiles
         let mut cells = vec![];
         for _ in 0..height {
             let mut row = vec![];
@@ -46,10 +47,12 @@ impl Board {
             }
             cells.push(row);
         }
+        // set corners
         cells[0][0] = Tile{shape: Shape::L, orientation: Direction::East, item: None};
         cells[0][width - 1] = Tile{shape: Shape::L, orientation: Direction::South, item: None};
         cells[height - 1][0] = Tile{shape: Shape::L, orientation: Direction::North, item: None};
         cells[height - 1][width - 1] = Tile{shape: Shape::L, orientation: Direction::West, item: None};
+        // create tokens
         let player_tokens = players.iter().enumerate().map(|(i, (_, player))| {
             let position = match i {
                 0 => (0, 0),
@@ -60,9 +63,23 @@ impl Board {
             };
             (player.id, PlayerToken::new(player, position))
         }).collect();
+        // place items
+        let mut loose_tile: Tile = random();
+        for item in &crate::item::ITEM_LIST {
+            let mut rng = thread_rng();
+            let row: usize = (0..height).choose(&mut rng).expect("Failed to generate position");
+            let col: usize = (0..width).choose(&mut rng).expect("Failed to generate position");
+            if let Some(ref old_item) = cells[row][col].item {
+                if let Some(ref older_item) = loose_tile.item {
+                    println!("Lost {}", older_item.char());
+                }
+                loose_tile.item = Some(old_item.clone());
+            }
+            cells[row][col].item = Some(item.clone());
+        }
         Board {
             cells,
-            loose_tile: random(),
+            loose_tile,
             loose_tile_position: None,
             player_tokens,
         }

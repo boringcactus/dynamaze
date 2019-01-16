@@ -150,11 +150,10 @@ impl Distribution<Tile> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Tile {
         let shape = rng.gen();
         let orientation = rng.gen();
-        let item = rng.gen();
         Tile {
             shape,
             orientation,
-            item,
+            item: None,
         }
     }
 }

@@ -35,7 +35,8 @@ pub enum Item {
     Z,
 }
 
-const ITEM_LIST: [Item; 26] = [
+/// A list of all available items
+pub const ITEM_LIST: [Item; 26] = [
     Item::A,
     Item::B,
     Item::C,
