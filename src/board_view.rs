@@ -527,12 +527,34 @@ impl BoardView {
 
     fn draw_ui<G: Graphics, C>(
         &self, controller: &BoardController,
-        _glyphs: &mut C, c: &Context, g: &mut G
+        glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
-            self.draw_tile(controller, &controller.board.loose_tile, &cell, self.settings.background_color, _glyphs, c, g);
+            self.draw_tile(controller, &controller.board.loose_tile, &cell, self.settings.background_color, glyphs, c, g);
+        }
+
+        // draw player target
+        // TODO only render for local player
+        {
+            let (cell_size, _, _) = self.tile_padding(controller);
+            let (south_panel, _) = self.ui_extents();
+            let target_item = controller.board.player_tokens[controller.active_player_id()].next_target();
+            // TODO don't draw this as just a tile
+            let west = south_panel.west + cell_size * 1.5;
+            let fake_tile_extents = Extents {
+                north: south_panel.north,
+                south: south_panel.north + cell_size,
+                west,
+                east: west + cell_size,
+            };
+            let fake_tile = Tile {
+                shape: crate::tile::Shape::I,
+                orientation: Direction::North,
+                item: Some(target_item.clone()),
+            };
+            self.draw_tile(controller, &fake_tile, &fake_tile_extents, self.settings.background_color, glyphs, c, g);
         }
     }
 }

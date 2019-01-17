@@ -7,7 +7,7 @@ use rand::distributions::{Distribution, Standard};
 use crate::Item;
 
 /// Cardinal directions
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub enum Direction {
     /// Up
     North,
@@ -81,7 +81,7 @@ impl Distribution<Direction> for Standard {
 }
 
 /// Tile shapes
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Shape {
     /// Two connections, 90 degree angle (canonically North / East)
     L,
@@ -120,7 +120,7 @@ impl Distribution<Shape> for Standard {
 }
 
 /// Contents of a tile
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Tile {
     /// Shape of the tile
     pub shape: Shape,

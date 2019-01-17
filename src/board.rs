@@ -1,7 +1,8 @@
 //! Board logic
 
 use std::collections::{BTreeMap, HashSet};
-use crate::{Direction, Player, PlayerID, Shape, Tile};
+use std::mem;
+use crate::{Direction, Player, PlayerID, Shape, Tile, Item};
 use rand::prelude::*;
 
 /// Information about a player's token on the board
@@ -11,15 +12,28 @@ pub struct PlayerToken {
     pub player_id: PlayerID,
     /// Position of token (row, col)
     pub position: (usize, usize),
+    /// Target items, first pending to last
+    pub targets: Vec<Item>,
 }
 
 impl PlayerToken {
     /// Create a new token for the given player at the given position
-    pub fn new(player: &Player, position: (usize, usize)) -> PlayerToken {
+    pub fn new(player: &Player, position: (usize, usize), targets: Vec<Item>) -> PlayerToken {
         PlayerToken {
             player_id: player.id,
-            position
+            position,
+            targets,
         }
+    }
+
+    /// Retrieve the player's next target
+    pub fn next_target(&self) -> &Item {
+        self.targets.first().expect("Player has no targets!")
+    }
+
+    /// Indicate that a player has reached their target
+    pub fn reached_target(&mut self) {
+        self.targets.remove(0);
     }
 }
 
@@ -52,17 +66,6 @@ impl Board {
         cells[0][width - 1] = Tile{shape: Shape::L, orientation: Direction::South, item: None};
         cells[height - 1][0] = Tile{shape: Shape::L, orientation: Direction::North, item: None};
         cells[height - 1][width - 1] = Tile{shape: Shape::L, orientation: Direction::West, item: None};
-        // create tokens
-        let player_tokens = players.iter().enumerate().map(|(i, (_, player))| {
-            let position = match i {
-                0 => (0, 0),
-                1 => (height - 1, width - 1),
-                2 => (0, width - 1),
-                3 => (height - 1, 0),
-                _ => panic!("Too many players"),
-            };
-            (player.id, PlayerToken::new(player, position))
-        }).collect();
         // place items
         let mut loose_tile: Tile = random();
         for item in &crate::item::ITEM_LIST {
@@ -77,6 +80,27 @@ impl Board {
             }
             cells[row][col].item = Some(item.clone());
         }
+        // create tokens and assign targets
+        let player_count = players.len();
+        let mut legal_items: Vec<_> = cells.iter()
+            .flat_map(|row| row.iter().map(|tile| tile.item.clone()))
+            .filter_map(|x| x).collect();
+        legal_items.shuffle(&mut thread_rng());
+        let player_item_count = legal_items.len() / player_count;
+        let player_tokens = players.iter().enumerate().map(move |(i, (_, player))| {
+            let position = match i {
+                0 => (0, 0),
+                1 => (height - 1, width - 1),
+                2 => (0, width - 1),
+                3 => (height - 1, 0),
+                _ => panic!("Too many players"),
+            };
+            let remaining_items = legal_items.split_off(player_item_count);
+            let player_items = mem::replace(&mut legal_items, remaining_items);
+            println!("Gave player {:?} targets {:?}", player.id, player_items);
+            let result = (player.id, PlayerToken::new(player, position, player_items));
+            result
+        }).collect();
         Board {
             cells,
             loose_tile,
@@ -154,6 +178,7 @@ impl Board {
                 (*id, PlayerToken {
                     player_id: *id,
                     position: new_position,
+                    targets: token.targets.clone(),
                 })
             }).collect();
         }
@@ -196,5 +221,20 @@ impl Board {
             }
         }
         result
+    }
+
+    /// Indicates that the given player has reached their target
+    pub fn player_reached_target(&mut self, player_id: &PlayerID) {
+        self.player_tokens = self.player_tokens.iter().map(|(id, token)| {
+            if *player_id != *id {
+                return (*id, token.clone());
+            }
+            let targets = token.targets.clone().split_first().expect("Reached target but no targets left").1.to_vec();
+            (*id, PlayerToken {
+                player_id: *id,
+                position: token.position,
+                targets,
+            })
+        }).collect();
     }
 }

@@ -22,8 +22,9 @@ impl BoardController {
     /// Creates a new board controller with a new board
     pub fn new(width: usize, height: usize, player_list: Vec<Player>) -> BoardController {
         let players = player_list.into_iter().map(|p| (p.id, p)).collect();
+        let board = Board::new(width, height, &players);
         BoardController {
-            board: Board::new(width, height, &players),
+            board,
             cursor_pos: [0.0; 2],
             players,
         }
@@ -55,9 +56,16 @@ impl BoardController {
                     self.board.insert_loose_tile();
                 }
             } else if let Some(pos) = view.in_tile(&self.cursor_pos, self) {
+                // if clicked inside a tile, if that tile is reachable from the active player's position...
                 if self.board.reachable_coords(self.board.player_pos(self.active_player_id())).contains(&pos) {
+                    // move the active player to the given position
                     let id = *self.active_player_id();
                     self.board.move_player(&id, pos);
+                    // if the player has reached their target...
+                    if Some(self.board.player_tokens[&id].next_target()) == self.board.get([pos.1, pos.0]).item.as_ref() {
+                        // advance the player to the next target
+                        self.board.player_reached_target(&id);
+                    }
                 }
             }
         }
