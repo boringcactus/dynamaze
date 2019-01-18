@@ -8,7 +8,8 @@ use crate::Board;
 use crate::BoardView;
 use crate::{Player, PlayerID};
 
-/// Handles events for DynaMaze game
+/// Handles events for DynaMaze game session
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BoardController {
     /// Board state
     pub board: Board,

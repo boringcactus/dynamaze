@@ -1,12 +1,14 @@
 //! Player information
 
+use std::net;
+
 use graphics::types::Color;
-use rand::prelude::*;
 
 /// The ID assigned to a player
 pub type PlayerID = u64;
 
 /// Information about a player
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Player {
     /// Name
     pub name: String,
@@ -14,15 +16,18 @@ pub struct Player {
     pub color: Color,
     /// ID
     pub id: PlayerID,
+    /// Network address
+    pub address: net::SocketAddr,
 }
 
 impl Player {
     /// Create a new player
-    pub fn new(name: String, color: Color) -> Player {
+    pub fn new(name: String, color: Color, id: PlayerID, address: net::SocketAddr) -> Player {
         Player {
             name,
             color,
-            id: random(),
+            id,
+            address,
         }
     }
 }

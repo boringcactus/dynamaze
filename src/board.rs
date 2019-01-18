@@ -6,7 +6,7 @@ use crate::{Direction, Player, PlayerID, Shape, Tile, Item};
 use rand::prelude::*;
 
 /// Information about a player's token on the board
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PlayerToken {
     /// ID of player the token is for
     pub player_id: PlayerID,
@@ -38,6 +38,7 @@ impl PlayerToken {
 }
 
 /// Information about board state
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Board {
     /// Cells
     cells: Vec<Vec<Tile>>,

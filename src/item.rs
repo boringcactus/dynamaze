@@ -5,7 +5,7 @@ use rand::distributions::{Distribution, Standard};
 
 /// An item a tile can have
 #[allow(missing_docs)]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Item {
     A,
     B,
