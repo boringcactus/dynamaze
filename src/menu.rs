@@ -1,5 +1,7 @@
 //! Game menu logic
 
+use std::io;
+
 use crate::{BoardController, Connection, Player, PlayerID};
 use crate::net::Message;
 
@@ -82,11 +84,11 @@ impl NetGameState {
 
 impl NetGameState {
     /// Connects to a lobby running on the given address as the given player
-    pub fn join_lobby(socket: &Connection, player: Player) -> NetGameState {
-        socket.send(&Message::JoinLobby(player));
-        match socket.receive() {
-            (Message::State(s), _) => s,
-            (m, _) => panic!("Failed to synchronize with host: got {:?}", m),
+    pub fn join_lobby(socket: &mut Connection, player: Player) -> io::Result<NetGameState> {
+        socket.send(&Message::JoinLobby(player))?;
+        match socket.receive()? {
+            Message::State(s) => Ok(s),
+            m => panic!("Failed to synchronize with host: got {:?}", m),
         }
     }
 }

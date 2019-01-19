@@ -5,6 +5,7 @@
 extern crate bincode;
 extern crate glutin_window;
 extern crate graphics;
+extern crate netbuf;
 extern crate opengl_graphics;
 extern crate piston;
 extern crate rand;

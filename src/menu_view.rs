@@ -48,7 +48,7 @@ impl GameView {
                     NetGameState::Lobby(ref info) => {
                         // TODO don't do this
                         let black = [0.0, 0.0, 0.0, 1.0];
-                        let port = conn_state.connection.socket.local_addr().unwrap().port();
+                        let port = conn_state.connection.host_port();
                         let status = if state.is_host(&controller.player_id) {
                             format!("Hosting on port {}, ", port)
                         } else {

@@ -8,7 +8,7 @@ use crate::BoardController;
 use crate::Connection;
 use crate::GameView;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
-use crate::net::{ConnectionInfo, Message};
+use crate::net::Message;
 
 // TODO don't do this, don't at all do this, why the fuck am i doing this
 fn to_char(key: &Key, shift: bool) -> Option<char> {
@@ -153,17 +153,12 @@ impl GameController {
                 let ref mut connection = conn_state.connection;
                 let ref mut state = conn_state.state;
                 let is_host = state.is_host(&self.player_id);
-                match connection.try_receive() {
-                    Some((Message::StateRequest, source)) => {
-                        connection.send_to(&Message::State(state.clone()), &source);
-                    }
-                    Some((Message::JoinLobby(player), source)) => {
+                connection.accept().expect("Failed to accept connection");
+                match connection.try_receive().expect("Failed to receive packet") {
+                    Some((Message::JoinLobby(player), _)) => {
                         if let NetGameState::Lobby(ref mut lobby_info) = state {
-                            if let ConnectionInfo::Host(ref mut guests) = connection.info {
-                                lobby_info.guests.push(player);
-                                guests.push(source);
-                                connection.send(&Message::State(NetGameState::Lobby(lobby_info.clone())));
-                            }
+                            lobby_info.guests.push(player);
+                            self.broadcast_state();
                         }
                     }
                     Some((Message::EditPlayer(id, player), _)) => {
@@ -178,7 +173,7 @@ impl GameController {
                         // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
                         *state = new_state;
                         if is_host {
-                            connection.send_without(&Message::State(state.clone()), &source);
+                            connection.send_without(&Message::State(state.clone()), &source).expect("Failed to send message");
                         }
                     }
                     None => {}
@@ -198,7 +193,7 @@ impl GameController {
                 if let Some(Button::Mouse(button)) = e.press_args() {
                     match button {
                         MouseButton::Left => {
-                            let connection = Connection::new(12543, None).expect("Failed to start server on port 12543");
+                            let connection = Connection::new_host(12543).expect("Failed to start server on port 12543");
                             let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
                             let conn_state = ConnectedState {
                                 connection,
@@ -218,14 +213,14 @@ impl GameController {
                     apply_key(address, &key, self.shift);
                 }
                 if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                    let address = Some(address.parse().expect("Invalid address!"));
-                    let connection = Connection::new_with_backoff(12544, address);
+                    let address = address.parse().expect("Invalid address!");
+                    let mut connection = Connection::new_guest(address).expect("Failed to connect");
                     let mut rng = thread_rng();
                     let r = rng.gen_range(0.0, 1.0);
                     let g = rng.gen_range(0.0, 1.0);
                     let b = rng.gen_range(0.0, 1.0);
                     let player = Player::new("Guesty McGuestface".into(), [r, g, b, 1.0], self.player_id);
-                    let state = NetGameState::join_lobby(&connection, player);
+                    let state = NetGameState::join_lobby(&mut connection, player).expect("Failed to receive state");
                     let conn_state = ConnectedState {
                         connection,
                         state,
@@ -234,7 +229,7 @@ impl GameController {
                 }
             }
             GameState::InGame(ref mut conn_state) => {
-                let ref connection = conn_state.connection;
+                let ref mut connection = conn_state.connection;
                 let ref mut state = conn_state.state;
                 let is_host = state.is_host(&self.player_id);
                 match state {
@@ -252,7 +247,7 @@ impl GameController {
                                 self.broadcast_state();
                             } else {
                                 let message = Message::EditPlayer(self.player_id, player);
-                                connection.send(&message);
+                                connection.send(&message).expect("Failed to send message");
                             }
                         } else if let Some(Button::Mouse(MouseButton::Right)) = e.press_args() {
                             if is_host {
@@ -271,7 +266,7 @@ impl GameController {
                                     info.host = player;
                                 } else {
                                     let message = Message::EditPlayer(self.player_id, player);
-                                    connection.send(&message);
+                                    connection.send(&message).expect("Failed to send message");
                                 }
                             }
                         }
@@ -300,11 +295,11 @@ impl GameController {
     }
 
     // TODO maybe don't do this
-    fn broadcast_state(&self) {
-        if let GameState::InGame(ref conn_state) = self.state {
-            let ref connection = conn_state.connection;
+    fn broadcast_state(&mut self) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let ref mut connection = conn_state.connection;
             let ref state = conn_state.state;
-            connection.send(&Message::State(state.clone()));
+            connection.send(&Message::State(state.clone())).expect("Failed to send message");
         }
     }
 }
