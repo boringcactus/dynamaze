@@ -37,6 +37,15 @@ impl LobbyInfo {
         players.append(&mut self.guests.clone());
         players
     }
+
+    /// Gets a player by ID
+    pub fn player(&self, id: &PlayerID) -> &Player {
+        if self.host.id == *id {
+            &self.host
+        } else {
+            self.guests.iter().filter(|p| p.id == *id).nth(0).expect("Not in lobby!")
+        }
+    }
 }
 
 /// Endgame information
@@ -76,10 +85,7 @@ impl NetGameState {
     pub fn join_lobby(socket: &Connection, player: Player) -> NetGameState {
         socket.send(&Message::JoinLobby(player));
         match socket.receive() {
-            (Message::State(s), _) => {
-                println!("Got state!!!!");
-                s
-            },
+            (Message::State(s), _) => s,
             (m, _) => panic!("Failed to synchronize with host: got {:?}", m),
         }
     }

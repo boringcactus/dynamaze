@@ -75,9 +75,13 @@ impl BoardController {
         if let Some(pos) = e.mouse_cursor_args() {
             self.cursor_pos = pos;
             if should_insert {
-                self.board.loose_tile_position = view.in_insert_guide(&pos, self);
+                let old_loose_tile_position = self.board.loose_tile_position;
+                let new_loose_tile_position = view.in_insert_guide(&pos, self);
+                self.board.loose_tile_position = new_loose_tile_position;
+                if old_loose_tile_position != new_loose_tile_position {
+                    dirty = true;
+                }
             }
-            dirty = true;
         }
 
         if let Some(Button::Mouse(button)) = e.press_args() {
@@ -136,5 +140,15 @@ impl BoardController {
         let mut rest = self.turn_order.split_off(1);
         rest.append(&mut self.turn_order);
         self.turn_order = rest;
+    }
+
+    /// Gets the player who has no targets remaining, if one exists
+    pub fn winner(&self) -> Option<&Player> {
+        self.board
+            .player_tokens
+            .iter()
+            .filter(|(_, token)| token.targets.is_empty())
+            .nth(0)
+            .map(|(id, _)| &self.players[id])
     }
 }

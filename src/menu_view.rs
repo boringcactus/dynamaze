@@ -49,14 +49,22 @@ impl GameView {
                         // TODO don't do this
                         let black = [0.0, 0.0, 0.0, 1.0];
                         let port = conn_state.connection.socket.local_addr().unwrap().port();
-                        let header = if state.is_host(&controller.player_id) {
-                            format!("Hosting on port {}, click anywhere to start game", port)
+                        let status = if state.is_host(&controller.player_id) {
+                            format!("Hosting on port {}, ", port)
                         } else {
-                            "Connected to lobby, click anywhere to randomize your token color".to_string()
+                            "Connected to lobby".to_string()
                         };
                         let transform = c.transform.trans(0.0, 60.0);
-                        graphics::text(black, 20, &header, glyphs, transform, g).ok().expect("Failed to draw text");
+                        graphics::text(black, 20, &status, glyphs, transform, g).ok().expect("Failed to draw text");
                         let transform = transform.trans(0.0, 30.0);
+                        let header = if state.is_host(&controller.player_id) {
+                            "Left-click to randomize your color, type to edit your name, right-click to start game"
+                        } else {
+                            "Left-click to randomize your color, type to edit your name"
+                        };
+                        graphics::text(black, 20, header, glyphs, transform, g).ok().expect("Failed to draw text");
+                        let transform = transform.trans(0.0, 30.0);
+                        // TODO edit name
                         graphics::text(black, 20, &info.name, glyphs, transform, g).ok().expect("Failed to draw text");
                         let mut transform = transform.trans(0.0, 30.0);
                         for player in info.players_ref() {
@@ -68,10 +76,16 @@ impl GameView {
                             transform = transform.trans(0.0, 30.0);
                         }
                     },
-                    NetGameState::GameOver(_) => unimplemented!("Game over isn't real yet"),
                     NetGameState::Active(ref board_controller) => {
                         self.board_view.draw(board_controller, &controller.player_id, glyphs, c, g);
                     }
+                    NetGameState::GameOver(ref info) => {
+                        // TODO don't do this
+                        let black = [0.0, 0.0, 0.0, 1.0];
+                        let text = format!("{} wins! Click to return to main menu", info.winner.name);
+                        let transform = c.transform.trans(0.0, 60.0);
+                        graphics::text(black, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
+                    },
                 }
             }
         }
