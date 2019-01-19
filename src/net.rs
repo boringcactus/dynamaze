@@ -1,6 +1,6 @@
 //! Networking logic
 
-use crate::Player;
+use crate::{Player, PlayerID};
 use crate::menu::NetGameState;
 
 use std::io;
@@ -18,44 +18,86 @@ pub enum Message {
     JoinLobby(Player),
     /// Entire game state
     State(NetGameState),
+    /// Edit player info
+    EditPlayer(PlayerID, Player),
 }
 
-/// Encapsulates a socket that can send and receive messages
-pub struct Socket {
+/// Tracks the type of connection this is
+pub enum ConnectionInfo {
+    /// Guest, with host address if connected
+    Guest(SocketAddr),
+    /// Host, with list of connected clients
+    Host(Vec<SocketAddr>),
+}
+
+/// Encapsulates connection information and behavior
+pub struct Connection {
     /// UDP socket
-    socket: UdpSocket,
+    pub socket: UdpSocket,
+    /// Connection type
+    pub info: ConnectionInfo,
 }
 
-impl Socket {
+impl Connection {
     /// Creates a new socket on the given local port
-    pub fn new(port: u16) -> io::Result<Socket> {
-        Ok(Socket {
-            socket: UdpSocket::bind(("127.0.0.1", port))?,
+    pub fn new(port: u16, host: Option<SocketAddr>) -> io::Result<Connection> {
+        let socket = UdpSocket::bind(("127.0.0.1", port))?;
+        let info = match host {
+            None => ConnectionInfo::Host(vec![]),
+            Some(host) => ConnectionInfo::Guest(host)
+        };
+        Ok(Connection {
+            socket,
+            info,
         })
     }
 
     /// Creates a new socket on the given local port, or something higher if it is in use
-    pub fn new_with_backoff(target_port: u16) -> Socket {
+    pub fn new_with_backoff(target_port: u16, host: Option<SocketAddr>) -> Connection {
         for port in target_port.. {
             let udp_socket = UdpSocket::bind(("127.0.0.1", port));
             if let Ok(socket) = udp_socket {
-                return Socket {
-                    socket
+                let info = match host {
+                    None => ConnectionInfo::Host(vec![]),
+                    Some(host) => ConnectionInfo::Guest(host)
+                };
+                return Connection {
+                    socket,
+                    info,
                 };
             }
         }
         panic!("Failed to find an open port");
     }
 
-    /// Gets the local address of this socket
-    pub fn local_addr(&self) -> SocketAddr {
-        self.socket.local_addr().expect("Failed to retrieve local address")
+    /// Sends a message to the given address
+    pub fn send_to(&self, message: &Message, dest: &SocketAddr) {
+        let data = serialize(message).expect("Couldn't serialize Message for network delivery");
+        self.socket.send_to(&data, dest).expect("Failed to send message");
     }
 
-    /// Sends a message to the given address
-    pub fn send_to(&self, message: Message, dest: &SocketAddr) {
-        let data = serialize(&message).expect("Couldn't serialize Message for network delivery");
-        self.socket.send_to(&data, dest);
+    fn send_to_all<'a, I>(&self, message: &Message, dests: I) where I: IntoIterator<Item = &'a SocketAddr> {
+        dests.into_iter().for_each(|guest| self.send_to(message, guest));
+    }
+
+    /// Sends a message to whoever it needs to go to, whether that's the host or all guests
+    pub fn send(&self, message: &Message) {
+        let dests = match self.info {
+            ConnectionInfo::Guest(ref host) => vec![host],
+            ConnectionInfo::Host(ref guests) => guests.iter().collect(),
+        };
+        self.send_to_all(message, dests);
+    }
+
+    /// Sends a message to whoever it needs to go to, but ignoring the given address if it would
+    /// otherwise be included
+    pub fn send_without(&self, message: &Message, filtered_addr: &SocketAddr) {
+        let dests = match self.info {
+            ConnectionInfo::Guest(ref host) => vec![host],
+            ConnectionInfo::Host(ref guests) => guests.iter().collect(),
+        };
+        let dests = dests.into_iter().filter(|addr| *filtered_addr != **addr);
+        self.send_to_all(message, dests);
     }
 
     /// Receives a message with a long timeout

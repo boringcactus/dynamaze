@@ -3,9 +3,9 @@
 use crate::BoardController;
 use crate::{Player, PlayerID};
 use crate::GameView;
-use crate::menu::{GameState, NetGameState, LobbyInfo};
-use crate::Socket;
-use crate::net::Message;
+use crate::menu::{GameState, NetGameState, LobbyInfo, ConnectedState};
+use crate::Connection;
+use crate::net::{Message, ConnectionInfo};
 
 use rand::prelude::*;
 use piston::input::GenericEvent;
@@ -16,8 +16,6 @@ pub struct GameController {
     pub state: GameState,
     /// Current player ID
     pub player_id: PlayerID,
-    /// Network socket
-    pub socket: Socket,
 }
 
 impl GameController {
@@ -27,7 +25,6 @@ impl GameController {
         GameController {
             state: GameState::MainMenu,
             player_id,
-            socket: Socket::new_with_backoff(12543),
         }
     }
 
@@ -38,22 +35,40 @@ impl GameController {
         // TODO find a way to move this to its own thread cleanly
         // TODO handle host/guest reasonably
         if e.after_render_args().is_some() {
-            match self.socket.try_receive() {
-                Some((Message::StateRequest, source)) => {
-                    if let GameState::InGame(ref state) = self.state {
-                        self.socket.send_to(Message::State(state.clone()), &source);
-                    }
-                },
-                Some((Message::JoinLobby(player), source)) => {
-                    if let GameState::InGame(NetGameState::Lobby(ref mut info)) = self.state {
-                        info.guests.push(player);
-                        self.socket.send_to(Message::State(NetGameState::Lobby(info.clone())), &source);
-                    }
+            if let GameState::InGame(ref mut conn_state) = self.state {
+                let ref mut connection = conn_state.connection;
+                let ref mut state = conn_state.state;
+                let is_host = state.is_host(&self.player_id);
+                match connection.try_receive() {
+                    Some((Message::StateRequest, source)) => {
+                        connection.send_to(&Message::State(state.clone()), &source);
+                    },
+                    Some((Message::JoinLobby(player), source)) => {
+                        if let NetGameState::Lobby(ref mut lobby_info) = state {
+                            if let ConnectionInfo::Host(ref mut guests) = connection.info {
+                                lobby_info.guests.push(player);
+                                guests.push(source);
+                                connection.send(&Message::State(NetGameState::Lobby(lobby_info.clone())));
+                            }
+                        }
+                    },
+                    Some((Message::EditPlayer(id, player), _)) => {
+                        if let NetGameState::Lobby(ref mut lobby_info) = state {
+                            if is_host {
+                                lobby_info.guests.iter_mut().filter(|p| p.id == id).for_each(|p| *p = player.clone());
+                                self.broadcast_state();
+                            }
+                        }
+                    },
+                    Some((Message::State(new_state), source)) => {
+                        // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
+                        *state = new_state;
+                        if is_host {
+                            connection.send_without(&Message::State(state.clone()), &source);
+                        }
+                    },
+                    None => {},
                 }
-                Some((Message::State(state), _)) => {
-                    self.state = GameState::InGame(state);
-                }
-                None => {}
             }
         }
 
@@ -62,7 +77,13 @@ impl GameController {
                 if let Some(Button::Mouse(button)) = e.press_args() {
                     match button {
                         MouseButton::Left => {
-                            self.state = GameState::InGame(NetGameState::Lobby(LobbyInfo::new(self.player_id, self.socket.local_addr())));
+                            let connection = Connection::new(12543, None).expect("Failed to start server on port 12543");
+                            let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
+                            let conn_state = ConnectedState {
+                                connection,
+                                state,
+                            };
+                            self.state = GameState::InGame(conn_state);
                         },
                         MouseButton::Right => {
                             self.state = GameState::ConnectMenu("127.0.0.1:12543".into());
@@ -74,25 +95,64 @@ impl GameController {
             GameState::ConnectMenu(ref address) => {
                 if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
                     println!("Connecting to {:?}", address);
-                    let address = address.parse().expect("Invalid address!");
-                    let player = Player::new("Guesty McGuestface".into(), [0.2, 0.4, 0.8, 1.0], self.player_id, self.socket.local_addr());
-                    let connection = NetGameState::connect(&self.socket, address, player);
-                    self.state = GameState::InGame(connection);
+                    let address = Some(address.parse().expect("Invalid address!"));
+                    let connection = Connection::new_with_backoff(12544, address);
+                    let mut rng = thread_rng();
+                    let r = rng.gen_range(0.0, 1.0);
+                    let g = rng.gen_range(0.0, 1.0);
+                    let b = rng.gen_range(0.0, 1.0);
+                    let player = Player::new("Guesty McGuestface".into(), [r, g, b, 1.0], self.player_id);
+                    let state = NetGameState::join_lobby(&connection, player);
+                    let conn_state = ConnectedState {
+                        connection,
+                        state,
+                    };
+                    self.state = GameState::InGame(conn_state);
                 }
             },
-            GameState::InGame(NetGameState::Lobby(ref mut info)) => {
-                if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                    let mut players = vec![info.host.clone()];
-                    players.append(&mut info.guests);
-                    let board_controller = BoardController::new(7, 7, players);
-                    let net_state = NetGameState::Active(board_controller);
-                    self.state = GameState::InGame(net_state);
+            GameState::InGame(ref mut conn_state) => {
+                let ref connection = conn_state.connection;
+                let ref mut state = conn_state.state;
+                let is_host = state.is_host(&self.player_id);
+                match state {
+                    NetGameState::Lobby(ref mut info) => {
+                        if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
+                            if is_host {
+                                let players = info.players();
+                                let board_controller = BoardController::new(7, 7, players, info.host.id);
+                                let net_state = NetGameState::Active(board_controller);
+                                *state = net_state;
+                                self.broadcast_state();
+                            } else {
+                                // TODO don't do this
+                                let mut rng = thread_rng();
+                                let r = rng.gen_range(0.0, 1.0);
+                                let g = rng.gen_range(0.0, 1.0);
+                                let b = rng.gen_range(0.0, 1.0);
+                                let player = Player::new("Guesty McGuestface".into(), [r, g, b, 1.0], self.player_id);
+                                let message = Message::EditPlayer(self.player_id, player);
+                                connection.send(&message);
+                            }
+                        }
+                    },
+                    NetGameState::GameOver(_) => unimplemented!("Game over isn't real yet"),
+                    NetGameState::Active(ref mut board_controller) => {
+                        let state_dirty = board_controller.event(&view.board_view, e, &self.player_id);
+                        if state_dirty {
+                            self.broadcast_state();
+                        }
+                    }
                 }
-            },
-            GameState::InGame(NetGameState::GameOver(_)) => unimplemented!("Game over isn't real yet"),
-            GameState::InGame(NetGameState::Active(ref mut board_controller)) => {
-                board_controller.event(&view.board_view, e);
             }
+        }
+    }
+
+    // TODO maybe don't do this
+    fn broadcast_state(&self) {
+        if let GameState::InGame(ref conn_state) = self.state {
+            let ref connection = conn_state.connection;
+            let ref state = conn_state.state;
+            connection.send(&Message::State(state.clone()));
         }
     }
 }

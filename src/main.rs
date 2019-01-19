@@ -22,7 +22,7 @@ pub use crate::board_view::{BoardView, BoardViewSettings};
 pub use crate::item::Item;
 pub use crate::menu_controller::GameController;
 pub use crate::menu_view::GameView;
-pub use crate::net::Socket;
+pub use crate::net::Connection;
 pub use crate::player::{Player, PlayerID};
 pub use crate::tile::{Tile, Direction, Shape};
 

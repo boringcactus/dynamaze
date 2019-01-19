@@ -10,6 +10,7 @@ use graphics::character::CharacterCache;
 use crate::BoardController;
 use crate::Direction;
 use crate::Tile;
+use crate::PlayerID;
 
 #[derive(Clone)]
 struct Extents {
@@ -226,7 +227,7 @@ impl BoardView {
 
     /// Draw board
     pub fn draw<G: Graphics, C>(
-        &self, controller: &BoardController,
+        &self, controller: &BoardController, local_id: &PlayerID,
         glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
         use graphics::{Line, Rectangle};
@@ -244,7 +245,7 @@ impl BoardView {
         let board_rect = [board.west, board.north, board_width, board_height];
 
         // draw the tiles
-        self.draw_tiles(controller, glyphs, c, g);
+        self.draw_tiles(controller, local_id, glyphs, c, g);
 
         // draw tile edges
         let cell_edge = Line::new(settings.cell_edge_color, settings.cell_edge_radius);
@@ -264,13 +265,13 @@ impl BoardView {
             .draw(board_rect, &c.draw_state, c.transform, g);
 
         // draw insert guides
-        self.draw_insert_guides(controller, glyphs, c, g);
+        self.draw_insert_guides(controller, local_id, glyphs, c, g);
 
         // draw player tokens
-        self.draw_player_tokens(controller, glyphs, c, g);
+        self.draw_player_tokens(controller, local_id, glyphs, c, g);
 
         // draw UI
-        self.draw_ui(controller, glyphs, c, g);
+        self.draw_ui(controller, local_id, glyphs, c, g);
     }
 
     fn tile_extents(&self, controller: &BoardController, row: usize, col: usize) -> Extents {
@@ -307,13 +308,13 @@ impl BoardView {
     }
 
     fn draw_tiles<G: Graphics, C>(
-        &self, controller: &BoardController,
+        &self, controller: &BoardController, local_id: &PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
 
-        let current_player_pos = controller.board.player_pos(controller.active_player_id());
+        let current_player_pos = controller.board.player_pos(local_id);
         let reachable = controller.board.reachable_coords(current_player_pos);
 
         for j in 0..board_tile_height {
@@ -438,7 +439,7 @@ impl BoardView {
     }
 
     fn draw_insert_guides<G: Graphics, C>(
-        &self, controller: &BoardController,
+        &self, controller: &BoardController, _local_id: &PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
         use graphics::Polygon;
@@ -502,7 +503,7 @@ impl BoardView {
     }
 
     fn draw_player_tokens<G: Graphics, C>(
-        &self, controller: &BoardController,
+        &self, controller: &BoardController, local_id: &PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
         use graphics::Ellipse;
@@ -519,16 +520,22 @@ impl BoardView {
                 None => continue,
             };
             let tile = self.tile_extents(controller, row, col);
+            let token_rect = tile - wall_width;
 
             let token_ellipse = Ellipse::new(player.color);
-            token_ellipse.draw(tile - wall_width, &c.draw_state, c.transform, g);
+            token_ellipse.draw(token_rect.clone(), &c.draw_state, c.transform, g);
+            if token.player_id == *local_id {
+                let token_core = Ellipse::new([0.0, 0.0, 0.0, 1.0]);
+                token_core.draw(token_rect - wall_width / 2.0, &c.draw_state, c.transform, g);
+            }
         }
     }
 
     fn draw_ui<G: Graphics, C>(
-        &self, controller: &BoardController,
+        &self, controller: &BoardController, local_id: &PlayerID,
         glyphs: &mut C, c: &Context, g: &mut G
     ) where C: CharacterCache<Texture = G::Texture> {
+        use graphics::Transformed;
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
@@ -540,21 +547,15 @@ impl BoardView {
         {
             let (cell_size, _, _) = self.tile_padding(controller);
             let (south_panel, _) = self.ui_extents();
-            let target_item = controller.board.player_tokens[controller.active_player_id()].next_target();
-            // TODO don't draw this as just a tile
+            let target_item = controller.board.player_tokens[local_id].next_target();
+            let turn_status = match *local_id == *controller.active_player_id() {
+                true => "is",
+                false => "is not",
+            };
+            let text = format!("Your target is {} and it {} your turn", target_item.char(), turn_status);
             let west = south_panel.west + cell_size * 1.5;
-            let fake_tile_extents = Extents {
-                north: south_panel.north,
-                south: south_panel.north + cell_size,
-                west,
-                east: west + cell_size,
-            };
-            let fake_tile = Tile {
-                shape: crate::tile::Shape::I,
-                orientation: Direction::North,
-                item: Some(target_item.clone()),
-            };
-            self.draw_tile(controller, &fake_tile, &fake_tile_extents, self.settings.background_color, glyphs, c, g);
+            let transform = c.transform.trans(west, south_panel.north + cell_size);
+            graphics::text(self.settings.text_color, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
         }
     }
 }

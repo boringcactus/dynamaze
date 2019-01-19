@@ -1,7 +1,5 @@
 //! Player information
 
-use std::net;
-
 use graphics::types::Color;
 
 /// The ID assigned to a player
@@ -16,18 +14,15 @@ pub struct Player {
     pub color: Color,
     /// ID
     pub id: PlayerID,
-    /// Network address
-    pub address: net::SocketAddr,
 }
 
 impl Player {
     /// Create a new player
-    pub fn new(name: String, color: Color, id: PlayerID, address: net::SocketAddr) -> Player {
+    pub fn new(name: String, color: Color, id: PlayerID) -> Player {
         Player {
             name,
             color,
             id,
-            address,
         }
     }
 }
