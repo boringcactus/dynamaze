@@ -11,6 +11,7 @@ use crate::BoardController;
 use crate::Direction;
 use crate::Tile;
 use crate::PlayerID;
+use crate::board_controller::TurnState;
 
 #[derive(Clone)]
 struct Extents {
@@ -269,6 +270,9 @@ impl BoardView {
 
         // draw player tokens
         self.draw_player_tokens(controller, local_id, glyphs, c, g);
+
+        // TODO draw self on top of other players
+        // TODO draw own target item on top of players
 
         // draw UI
         self.draw_ui(controller, local_id, glyphs, c, g);
@@ -548,14 +552,25 @@ impl BoardView {
             let (cell_size, _, _) = self.tile_padding(controller);
             let (south_panel, _) = self.ui_extents();
             let target_item = controller.board.player_tokens[local_id].next_target();
-            let turn_status = match *local_id == *controller.active_player_id() {
+            let my_turn = *local_id == *controller.active_player_id();
+            let turn_status = match my_turn {
                 true => "is",
                 false => "is not",
             };
             let text = format!("Your target is {} and it {} your turn", target_item.char(), turn_status);
             let west = south_panel.west + cell_size * 1.5;
-            let transform = c.transform.trans(west, south_panel.north + cell_size);
+            let north = south_panel.north + 20.0;
+            let transform = c.transform.trans(west, north);
             graphics::text(self.settings.text_color, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
+            if my_turn {
+                let text = match controller.turn_state {
+                    TurnState::InsertTile => "Right-click at a triangle to rotate, left-click to insert",
+                    TurnState::MoveToken => "Click on a reachable tile, or yourself to not move",
+                };
+                let north = north + 30.0;
+                let transform = c.transform.trans(west, north);
+                graphics::text(self.settings.text_color, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
+            }
         }
     }
 }

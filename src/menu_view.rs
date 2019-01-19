@@ -31,14 +31,14 @@ impl GameView {
             GameState::MainMenu => {
                 // TODO don't do this
                 let black = [0.0, 0.0, 0.0, 1.0];
-                let text = "Left-click to host local game, right-click to connect to local game";
+                let text = "Left-click to host game, right-click to connect to game";
                 let transform = c.transform.trans(0.0, 60.0);
                 graphics::text(black, 20, text, glyphs, transform, g).ok().expect("Failed to draw text");
             },
             GameState::ConnectMenu(ref address) => {
                 // TODO don't do this
                 let black = [0.0, 0.0, 0.0, 1.0];
-                let text = format!("Left-click to connect to {}", address);
+                let text = format!("Type an address, left-click to connect: {}", address);
                 let transform = c.transform.trans(0.0, 60.0);
                 graphics::text(black, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
             },
