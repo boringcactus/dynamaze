@@ -1,5 +1,6 @@
 //! Menu / global state controller
 
+use clipboard::{ClipboardContext, ClipboardProvider};
 use piston::input::{GenericEvent, Key};
 use rand::prelude::*;
 
@@ -226,6 +227,9 @@ impl GameController {
                         state,
                     };
                     self.state = GameState::InGame(conn_state);
+                } else if let Some(Button::Mouse(MouseButton::Right)) = e.press_args() {
+                    let mut ctx: ClipboardContext = ClipboardProvider::new().expect("Failed to paste");
+                    *address = ctx.get_contents().expect("Failed to paste");
                 }
             }
             GameState::InGame(ref mut conn_state) => {

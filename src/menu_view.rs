@@ -38,7 +38,7 @@ impl GameView {
             GameState::ConnectMenu(ref address) => {
                 // TODO don't do this
                 let black = [0.0, 0.0, 0.0, 1.0];
-                let text = format!("Type an address, left-click to connect: {}", address);
+                let text = format!("Type an address (right-click to paste), left-click to connect: {}", address);
                 let transform = c.transform.trans(0.0, 60.0);
                 graphics::text(black, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
             }
