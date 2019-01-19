@@ -1,9 +1,11 @@
 //! Tile logic
 
-use std::ops;
 use std::f64::consts;
-use rand::prelude::*;
+use std::ops;
+
 use rand::distributions::{Distribution, Standard};
+use rand::prelude::*;
+
 use crate::Item;
 
 /// Cardinal directions
@@ -37,10 +39,10 @@ impl ops::Add<Direction> for (usize, usize) {
     fn add(self, rhs: Direction) -> (usize, usize) {
         let (j, i) = self;
         match rhs {
-            Direction::North => (j-1, i),
-            Direction::South => (j+1, i),
-            Direction::East => (j, i+1),
-            Direction::West => (j, i-1),
+            Direction::North => (j - 1, i),
+            Direction::South => (j + 1, i),
+            Direction::East => (j, i + 1),
+            Direction::West => (j, i - 1),
         }
     }
 }

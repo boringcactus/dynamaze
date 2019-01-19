@@ -2,20 +2,21 @@
 
 //! DynaMaze, a multiplayer game about traversing a shifting maze
 
+extern crate bincode;
+extern crate glutin_window;
+extern crate graphics;
+extern crate opengl_graphics;
+extern crate piston;
+extern crate rand;
 #[macro_use]
 extern crate serde_derive;
-extern crate bincode;
-extern crate piston;
-extern crate graphics;
-extern crate glutin_window;
-extern crate opengl_graphics;
-extern crate rand;
 
-use piston::window::WindowSettings;
+use glutin_window::GlutinWindow;
+use opengl_graphics::{Filter, GlGraphics, GlyphCache, OpenGL, TextureSettings};
 use piston::event_loop::*;
 use piston::input::*;
-use glutin_window::GlutinWindow;
-use opengl_graphics::{ GlGraphics, OpenGL, Filter, GlyphCache, TextureSettings };
+use piston::window::WindowSettings;
+
 pub use crate::board::Board;
 pub use crate::board_controller::BoardController;
 pub use crate::board_view::{BoardView, BoardViewSettings};
@@ -24,7 +25,7 @@ pub use crate::menu_controller::GameController;
 pub use crate::menu_view::GameView;
 pub use crate::net::Connection;
 pub use crate::player::{Player, PlayerID};
-pub use crate::tile::{Tile, Direction, Shape};
+pub use crate::tile::{Direction, Shape, Tile};
 
 mod board;
 mod board_controller;
@@ -44,7 +45,7 @@ fn main() {
     // Create a window
     let mut window: GlutinWindow = WindowSettings::new(
         "DynaMaze",
-        window_size
+        window_size,
     )
         .opengl(opengl)
         .exit_on_esc(true)
@@ -66,7 +67,7 @@ fn main() {
         game_controller.event(&game_view, &e);
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
-                use graphics::{clear};
+                use graphics::clear;
                 clear([1.0; 4], g);
                 game_view.draw(&game_controller, glyphs, &c, g);
             });

@@ -2,8 +2,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
-use crate::{Direction, Player, PlayerID, Shape, Tile, Item};
+
 use rand::prelude::*;
+
+use crate::{Direction, Item, Player, PlayerID, Shape, Tile};
 
 /// Information about a player's token on the board
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -63,10 +65,10 @@ impl Board {
             cells.push(row);
         }
         // set corners
-        cells[0][0] = Tile{shape: Shape::L, orientation: Direction::East, item: None};
-        cells[0][width - 1] = Tile{shape: Shape::L, orientation: Direction::South, item: None};
-        cells[height - 1][0] = Tile{shape: Shape::L, orientation: Direction::North, item: None};
-        cells[height - 1][width - 1] = Tile{shape: Shape::L, orientation: Direction::West, item: None};
+        cells[0][0] = Tile { shape: Shape::L, orientation: Direction::East, item: None };
+        cells[0][width - 1] = Tile { shape: Shape::L, orientation: Direction::South, item: None };
+        cells[height - 1][0] = Tile { shape: Shape::L, orientation: Direction::North, item: None };
+        cells[height - 1][width - 1] = Tile { shape: Shape::L, orientation: Direction::West, item: None };
         // place items
         let mut loose_tile: Tile = random();
         for item in &crate::item::ITEM_LIST {

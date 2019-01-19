@@ -1,7 +1,7 @@
 //! Item logic
 
-use rand::prelude::*;
 use rand::distributions::{Distribution, Standard};
+use rand::prelude::*;
 
 /// An item a tile can have
 #[allow(missing_docs)]

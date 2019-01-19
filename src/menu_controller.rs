@@ -1,14 +1,14 @@
 //! Menu / global state controller
 
-use crate::BoardController;
-use crate::{Player, PlayerID};
-use crate::GameView;
-use crate::menu::{GameState, NetGameState, LobbyInfo, ConnectedState, GameOverInfo};
-use crate::Connection;
-use crate::net::{Message, ConnectionInfo};
-
-use rand::prelude::*;
 use piston::input::{GenericEvent, Key};
+use rand::prelude::*;
+
+use crate::{Player, PlayerID};
+use crate::BoardController;
+use crate::Connection;
+use crate::GameView;
+use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
+use crate::net::{ConnectionInfo, Message};
 
 // TODO don't do this, don't at all do this, why the fuck am i doing this
 fn to_char(key: &Key, shift: bool) -> Option<char> {
@@ -83,22 +83,22 @@ fn to_char(key: &Key, shift: bool) -> Option<char> {
         NumPadRightBrace => ('}', '}'),
         NumPadVerticalBar => ('|', '|'),
         Backspace | Unknown | Tab | Return | Escape | Delete | CapsLock | F1 | F2 | F3 | F4 | F5
-            | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13 | F14 | F15 | F16 | F17 | F18 | F19 | F20
-            | F21 | F22 | F23 | F24 | PrintScreen | ScrollLock | Pause | Insert | Home | PageUp
-            | PageDown | End | Right | Left | Down | Up | NumLockClear | NumPadEnter | Application
-            | Power | Execute | Help | Menu | Select | Stop | Again | Undo | Cut | Copy | Paste
-            | Find | Mute | VolumeDown | VolumeUp | AltErase | Sysreq | Cancel | Clear | Prior
-            | Return2 | Separator | Out | Oper | ClearAgain | CrSel | ExSel | NumPad00 | NumPad000
-            | ThousandsSeparator | DecimalSeparator | CurrencyUnit | CurrencySubUnit | NumPadTab
-            | NumPadBackspace | NumPadPower | NumPadDblAmpersand | NumPadDblVerticalBar
-            | NumPadMemStore | NumPadMemRecall | NumPadMemClear | NumPadMemAdd | NumPadMemSubtract
-            | NumPadMemMultiply | NumPadMemDivide | NumPadPlusMinus | NumPadClear | NumPadClearEntry
-            | NumPadBinary | NumPadOctal | NumPadDecimal | NumPadHexadecimal | LCtrl | LShift | LAlt
-            | RCtrl | RShift | RAlt | LGui | RGui | Mode | AudioNext | AudioPrev | AudioStop
-            | AudioPlay | AudioMute | MediaSelect | Www | Mail | Calculator | Computer | AcSearch
-            | AcHome | AcBack | AcBookmarks | AcForward | AcStop | AcRefresh | BrightnessDown
-            | BrightnessUp | DisplaySwitch | KbdIllumDown | KbdIllumToggle | KbdIllumUp | Eject
-            | Sleep => return None,
+        | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13 | F14 | F15 | F16 | F17 | F18 | F19 | F20
+        | F21 | F22 | F23 | F24 | PrintScreen | ScrollLock | Pause | Insert | Home | PageUp
+        | PageDown | End | Right | Left | Down | Up | NumLockClear | NumPadEnter | Application
+        | Power | Execute | Help | Menu | Select | Stop | Again | Undo | Cut | Copy | Paste
+        | Find | Mute | VolumeDown | VolumeUp | AltErase | Sysreq | Cancel | Clear | Prior
+        | Return2 | Separator | Out | Oper | ClearAgain | CrSel | ExSel | NumPad00 | NumPad000
+        | ThousandsSeparator | DecimalSeparator | CurrencyUnit | CurrencySubUnit | NumPadTab
+        | NumPadBackspace | NumPadPower | NumPadDblAmpersand | NumPadDblVerticalBar
+        | NumPadMemStore | NumPadMemRecall | NumPadMemClear | NumPadMemAdd | NumPadMemSubtract
+        | NumPadMemMultiply | NumPadMemDivide | NumPadPlusMinus | NumPadClear | NumPadClearEntry
+        | NumPadBinary | NumPadOctal | NumPadDecimal | NumPadHexadecimal | LCtrl | LShift | LAlt
+        | RCtrl | RShift | RAlt | LGui | RGui | Mode | AudioNext | AudioPrev | AudioStop
+        | AudioPlay | AudioMute | MediaSelect | Www | Mail | Calculator | Computer | AcSearch
+        | AcHome | AcBack | AcBookmarks | AcForward | AcStop | AcRefresh | BrightnessDown
+        | BrightnessUp | DisplaySwitch | KbdIllumDown | KbdIllumToggle | KbdIllumUp | Eject
+        | Sleep => return None,
     };
     if shift {
         Some(shift_result)
@@ -116,7 +116,7 @@ fn apply_key(string: &mut String, key: &Key, shift: bool) {
     match key {
         Backspace => {
             string.pop();
-        },
+        }
         _ => (),
     }
 }
@@ -156,7 +156,7 @@ impl GameController {
                 match connection.try_receive() {
                     Some((Message::StateRequest, source)) => {
                         connection.send_to(&Message::State(state.clone()), &source);
-                    },
+                    }
                     Some((Message::JoinLobby(player), source)) => {
                         if let NetGameState::Lobby(ref mut lobby_info) = state {
                             if let ConnectionInfo::Host(ref mut guests) = connection.info {
@@ -165,7 +165,7 @@ impl GameController {
                                 connection.send(&Message::State(NetGameState::Lobby(lobby_info.clone())));
                             }
                         }
-                    },
+                    }
                     Some((Message::EditPlayer(id, player), _)) => {
                         if let NetGameState::Lobby(ref mut lobby_info) = state {
                             if is_host {
@@ -173,15 +173,15 @@ impl GameController {
                                 self.broadcast_state();
                             }
                         }
-                    },
+                    }
                     Some((Message::State(new_state), source)) => {
                         // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
                         *state = new_state;
                         if is_host {
                             connection.send_without(&Message::State(state.clone()), &source);
                         }
-                    },
-                    None => {},
+                    }
+                    None => {}
                 }
             }
         }
@@ -205,14 +205,14 @@ impl GameController {
                                 state,
                             };
                             self.state = GameState::InGame(conn_state);
-                        },
+                        }
                         MouseButton::Right => {
                             self.state = GameState::ConnectMenu("127.0.0.1:12543".into());
-                        },
+                        }
                         _ => (),
                     }
                 }
-            },
+            }
             GameState::ConnectMenu(ref mut address) => {
                 if let Some(Button::Keyboard(key)) = e.press_args() {
                     apply_key(address, &key, self.shift);
@@ -232,7 +232,7 @@ impl GameController {
                     };
                     self.state = GameState::InGame(conn_state);
                 }
-            },
+            }
             GameState::InGame(ref mut conn_state) => {
                 let ref connection = conn_state.connection;
                 let ref mut state = conn_state.state;
@@ -275,7 +275,7 @@ impl GameController {
                                 }
                             }
                         }
-                    },
+                    }
                     NetGameState::Active(ref mut board_controller) => {
                         let state_dirty = board_controller.event(&view.board_view, e, &self.player_id);
                         if state_dirty {
@@ -293,7 +293,7 @@ impl GameController {
                         if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
                             self.state = GameState::MainMenu;
                         }
-                    },
+                    }
                 }
             }
         }

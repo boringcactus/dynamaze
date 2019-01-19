@@ -1,11 +1,11 @@
 //! Menu / Game view
 
+use graphics::{Context, Graphics};
+use graphics::character::CharacterCache;
+
 use crate::{BoardView, BoardViewSettings};
 use crate::GameController;
 use crate::menu::{GameState, NetGameState};
-
-use graphics::{Context, Graphics};
-use graphics::character::CharacterCache;
 
 /// Stores visual information about the game
 pub struct GameView {
@@ -24,8 +24,8 @@ impl GameView {
     /// Draw game
     pub fn draw<G: Graphics, C>(
         &self, controller: &GameController,
-        glyphs: &mut C, c: &Context, g: &mut G
-    ) where C: CharacterCache<Texture = G::Texture> {
+        glyphs: &mut C, c: &Context, g: &mut G,
+    ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Transformed;
         match controller.state {
             GameState::MainMenu => {
@@ -34,14 +34,14 @@ impl GameView {
                 let text = "Left-click to host game, right-click to connect to game";
                 let transform = c.transform.trans(0.0, 60.0);
                 graphics::text(black, 20, text, glyphs, transform, g).ok().expect("Failed to draw text");
-            },
+            }
             GameState::ConnectMenu(ref address) => {
                 // TODO don't do this
                 let black = [0.0, 0.0, 0.0, 1.0];
                 let text = format!("Type an address, left-click to connect: {}", address);
                 let transform = c.transform.trans(0.0, 60.0);
                 graphics::text(black, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
-            },
+            }
             GameState::InGame(ref conn_state) => {
                 let ref state = conn_state.state;
                 match state {
@@ -75,7 +75,7 @@ impl GameView {
                             graphics::text(black, 15, &player.name, glyphs, transform.trans(x_offset + 20.0, 0.0), g).ok().expect("Failed to draw text");
                             transform = transform.trans(0.0, 30.0);
                         }
-                    },
+                    }
                     NetGameState::Active(ref board_controller) => {
                         self.board_view.draw(board_controller, &controller.player_id, glyphs, c, g);
                     }
@@ -85,7 +85,7 @@ impl GameView {
                         let text = format!("{} wins! Click to return to main menu", info.winner.name);
                         let transform = c.transform.trans(0.0, 60.0);
                         graphics::text(black, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
-                    },
+                    }
                 }
             }
         }

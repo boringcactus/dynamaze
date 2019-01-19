@@ -1,13 +1,13 @@
 //! Networking logic
 
-use crate::{Player, PlayerID};
-use crate::menu::NetGameState;
-
 use std::io;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
-use bincode::{serialize, deserialize};
+use bincode::{deserialize, serialize};
+
+use crate::{Player, PlayerID};
+use crate::menu::NetGameState;
 
 /// A message that can be sent over the network
 #[derive(Serialize, Deserialize, Debug)]
@@ -76,7 +76,7 @@ impl Connection {
         self.socket.send_to(&data, dest).expect("Failed to send message");
     }
 
-    fn send_to_all<'a, I>(&self, message: &Message, dests: I) where I: IntoIterator<Item = &'a SocketAddr> {
+    fn send_to_all<'a, I>(&self, message: &Message, dests: I) where I: IntoIterator<Item=&'a SocketAddr> {
         dests.into_iter().for_each(|guest| self.send_to(message, guest));
     }
 
@@ -117,7 +117,7 @@ impl Connection {
             Ok((bytes, source)) => {
                 let message = deserialize(&buf[..bytes]).expect("Failed to parse message");
                 Some((message, source))
-            },
+            }
             Err(e) => {
                 if let io::ErrorKind::TimedOut = e.kind() {
                     None

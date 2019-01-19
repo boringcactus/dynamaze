@@ -1,6 +1,6 @@
 //! Game menu logic
 
-use crate::{Player, PlayerID, BoardController, Connection};
+use crate::{BoardController, Connection, Player, PlayerID};
 use crate::net::Message;
 
 /// Lobby information
@@ -65,7 +65,7 @@ pub enum NetGameState {
     /// In game
     Active(BoardController),
     /// After game
-    GameOver(GameOverInfo)
+    GameOver(GameOverInfo),
 }
 
 impl NetGameState {

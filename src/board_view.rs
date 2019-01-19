@@ -3,15 +3,15 @@
 use std::cmp;
 use std::ops;
 
-use graphics::types::{Color, Rectangle};
 use graphics::{Context, Graphics};
 use graphics::character::CharacterCache;
+use graphics::types::{Color, Rectangle};
 
+use crate::board_controller::TurnState;
 use crate::BoardController;
 use crate::Direction;
-use crate::Tile;
 use crate::PlayerID;
-use crate::board_controller::TurnState;
+use crate::Tile;
 
 #[derive(Clone)]
 struct Extents {
@@ -51,7 +51,7 @@ impl PartialOrd<Extents> for [f64; 2] {
         use std::cmp::Ordering::*;
         let [x, y] = self;
         let result = match (x.partial_cmp(&other.west), x.partial_cmp(&other.east),
-            y.partial_cmp(&other.north), y.partial_cmp(&other.south)) {
+                            y.partial_cmp(&other.north), y.partial_cmp(&other.south)) {
             // too far west
             (Some(Less), _, _, _) => Greater,
             // too far east
@@ -229,8 +229,8 @@ impl BoardView {
     /// Draw board
     pub fn draw<G: Graphics, C>(
         &self, controller: &BoardController, local_id: &PlayerID,
-        glyphs: &mut C, c: &Context, g: &mut G
-    ) where C: CharacterCache<Texture = G::Texture> {
+        glyphs: &mut C, c: &Context, g: &mut G,
+    ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Line, Rectangle};
 
         let board_tile_width = controller.board.width();
@@ -289,7 +289,7 @@ impl BoardView {
             north,
             south,
             east,
-            west
+            west,
         }
     }
 
@@ -313,8 +313,8 @@ impl BoardView {
 
     fn draw_tiles<G: Graphics, C>(
         &self, controller: &BoardController, local_id: &PlayerID,
-        _glyphs: &mut C, c: &Context, g: &mut G
-    ) where C: CharacterCache<Texture = G::Texture> {
+        _glyphs: &mut C, c: &Context, g: &mut G,
+    ) where C: CharacterCache<Texture=G::Texture> {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
 
@@ -336,8 +336,8 @@ impl BoardView {
 
     fn draw_tile<G: Graphics, C>(
         &self, controller: &BoardController, tile: &Tile, outer: &Extents, background_color: Color,
-        glyphs: &mut C, c: &Context, g: &mut G
-    ) where C: CharacterCache<Texture = G::Texture> {
+        glyphs: &mut C, c: &Context, g: &mut G,
+    ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Rectangle, Image, Transformed};
         let ref settings = self.settings;
 
@@ -444,8 +444,8 @@ impl BoardView {
 
     fn draw_insert_guides<G: Graphics, C>(
         &self, controller: &BoardController, _local_id: &PlayerID,
-        _glyphs: &mut C, c: &Context, g: &mut G
-    ) where C: CharacterCache<Texture = G::Texture> {
+        _glyphs: &mut C, c: &Context, g: &mut G,
+    ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Polygon;
 
         let ref settings = self.settings;
@@ -508,8 +508,8 @@ impl BoardView {
 
     fn draw_player_tokens<G: Graphics, C>(
         &self, controller: &BoardController, local_id: &PlayerID,
-        _glyphs: &mut C, c: &Context, g: &mut G
-    ) where C: CharacterCache<Texture = G::Texture> {
+        _glyphs: &mut C, c: &Context, g: &mut G,
+    ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Ellipse;
 
         let ref settings = self.settings;
@@ -537,8 +537,8 @@ impl BoardView {
 
     fn draw_ui<G: Graphics, C>(
         &self, controller: &BoardController, local_id: &PlayerID,
-        glyphs: &mut C, c: &Context, g: &mut G
-    ) where C: CharacterCache<Texture = G::Texture> {
+        glyphs: &mut C, c: &Context, g: &mut G,
+    ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Transformed;
         // draw loose tile
         {

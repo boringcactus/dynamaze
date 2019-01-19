@@ -1,13 +1,13 @@
 //! Board controller
 
+use std::collections::BTreeMap;
+
 use piston::input::GenericEvent;
 use rand::prelude::*;
 
-use std::collections::BTreeMap;
-
+use crate::{Player, PlayerID};
 use crate::Board;
 use crate::BoardView;
-use crate::{Player, PlayerID};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TurnState {
