@@ -9,6 +9,7 @@ use graphics::types::{Color, Rectangle};
 
 use crate::board_controller::TurnState;
 use crate::BoardController;
+use crate::colors;
 use crate::Direction;
 use crate::PlayerID;
 use crate::Tile;
@@ -106,18 +107,12 @@ pub struct BoardViewSettings {
     pub border_color: Color,
     /// Edge color around the whole board
     pub board_edge_color: Color,
-    /// Edge color between the 3x3 sections
-    pub section_edge_color: Color,
     /// Edge color between cells
     pub cell_edge_color: Color,
     /// Edge radius around the whole board
     pub board_edge_radius: f64,
-    /// Edge radius between the 3x3 sections
-    pub section_edge_radius: f64,
     /// Edge radius between cells
     pub cell_edge_radius: f64,
-    /// Selected cell background color
-    pub selection_background_color: Color,
     /// Text color
     pub text_color: Color,
     /// Wall color
@@ -140,20 +135,17 @@ impl BoardViewSettings {
             position: [0.0; 2],
             width,
             height,
-            background_color: [0.8, 0.8, 1.0, 1.0],
-            reachable_background_color: [0.9, 0.9, 1.0, 1.0],
-            border_color: [0.0, 0.0, 0.2, 1.0],
-            board_edge_color: [0.0, 0.0, 0.2, 1.0],
-            section_edge_color: [0.0, 0.0, 0.2, 1.0],
-            cell_edge_color: [0.0, 0.0, 0.2, 1.0],
+            background_color: colors::TEAL,
+            reachable_background_color: colors::LIGHT,
+            border_color: colors::DARK,
+            board_edge_color: colors::DARK,
+            cell_edge_color: colors::DARK,
             board_edge_radius: 3.0,
-            section_edge_radius: 2.0,
             cell_edge_radius: 1.0,
-            selection_background_color: [0.9, 0.9, 1.0, 1.0],
-            text_color: [0.0, 0.0, 0.1, 1.0],
-            wall_color: [0.2, 0.2, 0.3, 1.0],
+            text_color: colors::DARK,
+            wall_color: colors::BLUE,
             wall_width: 0.3,
-            insert_guide_color: [0.6, 0.2, 0.6, 1.0],
+            insert_guide_color: colors::PURPLE,
             ui_margin: 100.0,
             font_size: 25,
         }

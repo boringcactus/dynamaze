@@ -33,6 +33,7 @@ pub use crate::tile::{Direction, Shape, Tile};
 mod board;
 mod board_controller;
 mod board_view;
+mod colors;
 mod item;
 mod menu;
 mod menu_controller;
@@ -71,7 +72,7 @@ fn main() {
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
                 use graphics::clear;
-                clear([1.0; 4], g);
+                clear(colors::LIGHT, g);
                 game_view.draw(&game_controller, glyphs, &c, g);
             });
         }
