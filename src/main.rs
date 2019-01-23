@@ -53,6 +53,8 @@ fn main() {
     )
         .opengl(opengl)
         .exit_on_esc(true)
+        .samples(4)
+        .resizable(true)
         .build()
         .unwrap();
 
@@ -61,7 +63,7 @@ fn main() {
     let mut gl = GlGraphics::new(opengl);
 
     let mut game_controller = GameController::new();
-    let game_view = GameView::new([window_size[0] as f64, window_size[1] as f64]);
+    let mut game_view = GameView::new([window_size[0] as f64, window_size[1] as f64]);
 
     let texture_settings = TextureSettings::new().filter(Filter::Nearest);
     let ref mut glyphs = GlyphCache::new("assets/FiraSans-Regular.ttf", (), texture_settings)
@@ -70,7 +72,10 @@ fn main() {
     while let Some(e) = events.next(&mut window) {
         game_controller.event(&game_view, &e);
         if let Some(args) = e.render_args() {
-            gl.draw(args.viewport(), |c, g| {
+            let viewport = args.viewport();
+            game_view.board_view.settings.width = viewport.draw_size[0] as f64;
+            game_view.board_view.settings.height = viewport.draw_size[1] as f64;
+            gl.draw(viewport, |c, g| {
                 use graphics::clear;
                 clear(colors::LIGHT, g);
                 game_view.draw(&game_controller, glyphs, &c, g);
