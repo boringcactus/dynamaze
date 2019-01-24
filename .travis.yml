@@ -8,7 +8,9 @@ os:
   - windows
 script:
   - cargo test
+  - cargo build --release
 deploy:
+  skip_cleanup: true
   provider: script
   script: bash deploy.sh
   on:
