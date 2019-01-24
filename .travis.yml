@@ -1,5 +1,8 @@
 language: rust
-rust: stable
+rust:
+  - stable
+  - beta
+  - nightly
 cache: cargo
 filter_secrets: false
 os:
@@ -15,3 +18,7 @@ deploy:
   script: bash deploy.sh
   on:
     branch: master
+    rust: stable
+matrix:
+  allow_failures:
+    - rust: nightly
