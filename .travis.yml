@@ -8,17 +8,8 @@ os:
   - windows
 script:
   - cargo test
-  - cargo build --release
-  - mkdir dist
-  - cp -r assets dist/
-  - export SUFFIX=
-  - test "$TRAVIS_OS_NAME" = "windows" && export SUFFIX=.exe || echo "Not Windows"
-  - cp target/release/dynamaze$SUFFIX dist/
-  - export BUTLER_DIST=$TRAVIS_OS_NAME
-  - test "$TRAVIS_OS_NAME" = "osx" && export BUTLER_DIST=darwin || echo "Not Darwin"
-  - echo $BUTLER_DIST
-  - curl -L -o butler.zip https://broth.itch.ovh/butler/$BUTLER_DIST-amd64/LATEST/archive/default
-  - unzip butler.zip
-  - chmod +x butler$SUFFIX
-  - ./butler$SUFFIX -V
-  - ./butler$SUFFIX push dist boringcactus/dynamaze:$TRAVIS_OS_NAME
+deploy:
+  provider: script
+  script: bash deploy.sh
+  on:
+    branch: master
