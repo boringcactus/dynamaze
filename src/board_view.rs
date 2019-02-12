@@ -14,7 +14,7 @@ use crate::Direction;
 use crate::PlayerID;
 use crate::Tile;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Extents {
     north: f64,
     south: f64,
@@ -121,8 +121,10 @@ pub struct BoardViewSettings {
     pub wall_width: f64,
     /// Insert guide color
     pub insert_guide_color: Color,
-    /// UI margin size
-    pub ui_margin: f64,
+    /// UI margin size, south pane
+    pub ui_margin_south: f64,
+    /// UI margin size, east pane
+    pub ui_margin_east: f64,
     /// Font size
     pub font_size: u32,
 }
@@ -146,7 +148,8 @@ impl BoardViewSettings {
             wall_color: colors::BLUE,
             wall_width: 0.3,
             insert_guide_color: colors::PURPLE,
-            ui_margin: 100.0,
+            ui_margin_south: 100.0,
+            ui_margin_east: 300.0,
             font_size: 25,
         }
     }
@@ -169,13 +172,13 @@ impl BoardView {
     /// Gets the size of an individual tile and the x and y padding values
     fn tile_padding(&self, controller: &BoardController) -> (f64, f64, f64) {
         let ref settings = self.settings;
-        let cell_max_height = (settings.height - settings.ui_margin) / (controller.board.height() as f64 + 2.0);
-        let cell_max_width = (settings.width - settings.ui_margin) / (controller.board.width() as f64 + 2.0);
+        let cell_max_height = (settings.height - settings.ui_margin_south) / (controller.board.height() as f64 + 2.0);
+        let cell_max_width = (settings.width - settings.ui_margin_east) / (controller.board.width() as f64 + 2.0);
         if cell_max_height < cell_max_width {
-            let space_used_x = cell_max_height * (controller.board.width() as f64 + 2.0) + settings.ui_margin;
+            let space_used_x = cell_max_height * (controller.board.width() as f64 + 2.0) + settings.ui_margin_east;
             (cell_max_height, (settings.width - space_used_x) / 2.0, 0.0)
         } else {
-            let space_used_y = cell_max_width * (controller.board.height() as f64 + 2.0) + settings.ui_margin;
+            let space_used_y = cell_max_width * (controller.board.height() as f64 + 2.0) + settings.ui_margin_south;
             (cell_max_width, 0.0, (settings.height - space_used_y) / 2.0)
         }
     }
@@ -186,9 +189,9 @@ impl BoardView {
         let (cell_size, x_padding, y_padding) = self.tile_padding(controller);
         let game = Extents {
             west: settings.position[0] + x_padding,
-            east: settings.position[0] + settings.width - x_padding - settings.ui_margin,
+            east: settings.position[0] + settings.width - x_padding - settings.ui_margin_east,
             north: settings.position[1] + y_padding,
-            south: settings.position[1] + settings.height - y_padding - settings.ui_margin,
+            south: settings.position[1] + settings.height - y_padding - settings.ui_margin_south,
         };
         let board = game.clone() - cell_size;
         (game, board)
@@ -204,7 +207,7 @@ impl BoardView {
             east: settings.position[0] + settings.width,
         };
         let south = Extents {
-            north: global.south - settings.ui_margin,
+            north: global.south - settings.ui_margin_south,
             south: global.south,
             west: global.west,
             east: global.east,
@@ -212,7 +215,7 @@ impl BoardView {
         let east = Extents {
             north: global.north,
             south: south.north,
-            west: global.east - settings.ui_margin,
+            west: global.east - settings.ui_margin_east,
             east: global.east,
         };
         (south, east)
@@ -539,7 +542,6 @@ impl BoardView {
         }
 
         // draw player target
-        // TODO only render for local player
         {
             let (cell_size, _, _) = self.tile_padding(controller);
             let (south_panel, _) = self.ui_extents();
@@ -562,6 +564,28 @@ impl BoardView {
                 let north = north + 30.0;
                 let transform = c.transform.trans(west, north);
                 graphics::text(self.settings.text_color, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
+            }
+        }
+
+        // draw player list
+        {
+            let (_, east_panel) = self.ui_extents();
+
+            let west = east_panel.west;
+            let mut north = east_panel.north + 20.0;
+            for player_id in &controller.turn_order {
+                let ref player = controller.players[player_id];
+                let ref token = controller.board.player_tokens[player_id];
+
+                let transform = c.transform.trans(west, north);
+                graphics::text(self.settings.text_color, 15, &player.name, glyphs, transform, g).ok().expect("Failed to draw text");
+                north += 10.0;
+
+                graphics::ellipse(player.color, [west, north, 15.0, 15.0], c.transform, g);
+                let text = format!("{} remaining", token.targets.len());
+                let transform = c.transform.trans(west + 20.0, north + 10.0);
+                graphics::text(self.settings.text_color, 15, &text, glyphs, transform, g).ok().expect("Failed to draw text");
+                north += 40.0;
             }
         }
     }
