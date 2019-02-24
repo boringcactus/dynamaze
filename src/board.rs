@@ -88,6 +88,9 @@ impl Board {
         let mut legal_items: Vec<_> = cells.iter()
             .flat_map(|row| row.iter().map(|tile| tile.item.clone()))
             .filter_map(|x| x).collect();
+        if let Some(ref x) = loose_tile.item {
+            legal_items.push(x.clone());
+        }
         legal_items.shuffle(&mut thread_rng());
         let player_item_count = legal_items.len() / player_count;
         let player_tokens = players.iter().enumerate().map(move |(i, (_, player))| {
