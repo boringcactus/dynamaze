@@ -1,18 +1,14 @@
 //! Menu / global state controller
 
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use clipboard::{ClipboardContext, ClipboardProvider};
 use piston::input::{GenericEvent, Key};
 use rand::prelude::*;
 
-use crate::{Player, PlayerID};
-use crate::BoardController;
-use crate::GameView;
+use crate::{BoardController, GameView, Player, PlayerID};
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
-use crate::net::{self, Message};
-use crate::net::MessageCtrl;
+use crate::net::{self, Message, MessageCtrl};
 
 // TODO don't do this, don't at all do this, why the fuck am i doing this
 fn to_char(key: &Key, shift: bool) -> Option<char> {

@@ -7,12 +7,8 @@ use graphics::{Context, Graphics};
 use graphics::character::CharacterCache;
 use graphics::types::{Color, Rectangle};
 
+use crate::{BoardController, colors, Direction, PlayerID, Tile};
 use crate::board_controller::TurnState;
-use crate::BoardController;
-use crate::colors;
-use crate::Direction;
-use crate::PlayerID;
-use crate::Tile;
 
 #[derive(Clone, Debug)]
 struct Extents {

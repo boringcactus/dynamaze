@@ -5,9 +5,7 @@ use std::collections::BTreeMap;
 use piston::input::GenericEvent;
 use rand::prelude::*;
 
-use crate::{Player, PlayerID};
-use crate::Board;
-use crate::BoardView;
+use crate::{Board, BoardView, Player, PlayerID};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TurnState {

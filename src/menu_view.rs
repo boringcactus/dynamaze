@@ -3,9 +3,7 @@
 use graphics::{Context, Graphics};
 use graphics::character::CharacterCache;
 
-use crate::{BoardView, BoardViewSettings};
-use crate::colors;
-use crate::GameController;
+use crate::{BoardView, BoardViewSettings, colors, GameController};
 use crate::menu::{GameState, NetGameState};
 
 /// Stores visual information about the game

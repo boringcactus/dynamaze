@@ -1,19 +1,15 @@
 //! Networking logic
 
 use std::error::Error;
-use std::fmt;
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
+use std::fmt::{self, Display, Formatter};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use bincode::{deserialize, serialize};
 use bytes::{BufMut, BytesMut};
 use futures::stream;
-use tokio::codec::{Decoder, Encoder};
-use tokio::codec::Framed;
+use tokio::codec::{Decoder, Encoder, Framed};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 use tokio::sync::mpsc;

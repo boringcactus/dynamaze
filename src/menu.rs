@@ -1,7 +1,6 @@
 //! Game menu logic
 
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc;
 
