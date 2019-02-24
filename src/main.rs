@@ -4,15 +4,17 @@
 //! DynaMaze, a multiplayer game about traversing a shifting maze
 
 extern crate bincode;
+extern crate bytes;
 extern crate clipboard;
+extern crate futures;
 extern crate glutin_window;
 extern crate graphics;
-extern crate netbuf;
 extern crate opengl_graphics;
 extern crate piston;
 extern crate rand;
 #[macro_use]
 extern crate serde_derive;
+extern crate tokio;
 
 use glutin_window::GlutinWindow;
 use opengl_graphics::{Filter, GlGraphics, GlyphCache, OpenGL, TextureSettings};
@@ -26,7 +28,6 @@ pub use crate::board_view::{BoardView, BoardViewSettings};
 pub use crate::item::Item;
 pub use crate::menu_controller::GameController;
 pub use crate::menu_view::GameView;
-pub use crate::net::Connection;
 pub use crate::player::{Player, PlayerID};
 pub use crate::tile::{Direction, Shape, Tile};
 

@@ -1,9 +1,12 @@
 //! Game menu logic
 
-use std::io;
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use crate::{BoardController, Connection, Player, PlayerID};
-use crate::net::Message;
+use tokio::sync::mpsc;
+
+use crate::{BoardController, Player, PlayerID};
+use crate::net::{Message, MessageCtrl};
 
 /// Lobby information
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -68,6 +71,8 @@ pub enum NetGameState {
     Active(BoardController),
     /// After game
     GameOver(GameOverInfo),
+    /// An error occurred
+    Error(String),
 }
 
 impl NetGameState {
@@ -77,6 +82,7 @@ impl NetGameState {
             NetGameState::Lobby(ref info) => info.host.id,
             NetGameState::Active(ref board_controller) => board_controller.host_id,
             NetGameState::GameOver(ref info) => info.host_id,
+            NetGameState::Error(_) => 0,
         };
         host_id == *id
     }
@@ -84,21 +90,17 @@ impl NetGameState {
 
 impl NetGameState {
     /// Connects to a lobby running on the given address as the given player
-    pub fn join_lobby(socket: &mut Connection, player: Player) -> io::Result<NetGameState> {
-        socket.send(&Message::JoinLobby(player))?;
-        match socket.receive()? {
-            Message::State(s) => Ok(s),
-            m => panic!("Failed to synchronize with host: got {:?}", m),
-        }
+    pub fn join_lobby(socket: &mut mpsc::Sender<MessageCtrl>, player: Player) {
+        socket.try_send(Message::JoinLobby(player).into()).map_err(|_| ()).expect("Failed to pass message")
     }
 }
 
 /// State of a connected game
 pub struct ConnectedState {
-    /// Socket and connection info
-    pub connection: Connection,
+    /// Message passing mechanism
+    pub sender: mpsc::Sender<MessageCtrl>,
     /// Game state
-    pub state: NetGameState,
+    pub state: Arc<Mutex<NetGameState>>,
 }
 
 pub enum GameState {

@@ -1,12 +1,22 @@
 //! Networking logic
 
-use std::io;
-use std::io::prelude::*;
-use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::time::Duration;
+use std::error::Error;
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::net::Ipv4Addr;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use bincode::{deserialize, serialize};
-use netbuf::Buf;
+use bytes::{BufMut, BytesMut};
+use futures::stream;
+use tokio::codec::{Decoder, Encoder};
+use tokio::codec::Framed;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::prelude::*;
+use tokio::sync::mpsc;
 
 use crate::{Player, PlayerID};
 use crate::menu::NetGameState;
@@ -14,7 +24,7 @@ use crate::menu::NetGameState;
 const USIZE_NET_LEN: usize = 8;
 
 /// A message that can be sent over the network
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Message {
     /// Join a lobby
     JoinLobby(Player),
@@ -24,191 +34,337 @@ pub enum Message {
     EditPlayer(PlayerID, Player),
 }
 
-/// Maintains a TCP stream and receive buffer
-struct TcpConnection {
-    /// Socket
-    stream: TcpStream,
-    /// Receive buffer
-    buf: Buf,
+#[derive(Debug)]
+enum MessageCodecError {
+    IO(std::io::Error),
+    Send(mpsc::error::SendError),
+    Recv(mpsc::error::RecvError),
 }
 
-impl From<TcpStream> for TcpConnection {
-    fn from(stream: TcpStream) -> Self {
-        TcpConnection {
-            stream,
-            buf: Buf::new(),
+impl Display for MessageCodecError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            MessageCodecError::IO(ref x) => x.fmt(f),
+            MessageCodecError::Send(ref x) => f.write_fmt(format_args!("Send({})", x)),
+            MessageCodecError::Recv(ref x) => f.write_fmt(format_args!("Recv({:?})", x)),
         }
     }
 }
 
-impl AsRef<TcpStream> for TcpConnection {
-    fn as_ref(&self) -> &TcpStream {
-        &self.stream
+impl Error for MessageCodecError {}
+
+impl From<std::io::Error> for MessageCodecError {
+    fn from(e: std::io::Error) -> Self {
+        MessageCodecError::IO(e.into())
     }
 }
 
-impl TcpConnection {
-    fn peer_addr(&self) -> io::Result<SocketAddr> {
-        self.stream.peer_addr()
+impl From<mpsc::error::SendError> for MessageCodecError {
+    fn from(e: mpsc::error::SendError) -> Self {
+        MessageCodecError::Send(e)
     }
+}
 
-    fn send(&mut self, message: &Message) -> io::Result<()> {
-        let data = serialize(message).expect("Couldn't serialize Message for network delivery");
+impl From<mpsc::error::RecvError> for MessageCodecError {
+    fn from(e: mpsc::error::RecvError) -> Self {
+        MessageCodecError::Recv(e)
+    }
+}
+
+struct MessageCodec;
+
+impl Encoder for MessageCodec {
+    type Item = Message;
+    type Error = MessageCodecError;
+
+    fn encode(&mut self, message: Self::Item, buf: &mut BytesMut) -> Result<(), Self::Error> {
+        let data = serialize(&message).expect("Couldn't serialize Message for network delivery");
         let data_len = data.len();
         let data_len = serialize(&data_len).expect("Couldn't serialize message length");
-        let mut buf = Buf::new();
-        buf.extend(&data_len);
-        buf.extend(&data);
-        self.stream.write_all(buf.as_ref())
-    }
 
-    fn do_receive(&mut self) -> io::Result<Message> {
-        let ref mut stream = self.stream;
-        let ref mut buf = self.buf;
-        while buf.len() < USIZE_NET_LEN {
-            buf.read_from(stream)?;
+        buf.reserve(data_len.len() + data.len());
+        buf.put(data_len);
+        buf.put(data);
+        Ok(())
+    }
+}
+
+impl Decoder for MessageCodec {
+    type Item = Message;
+    type Error = MessageCodecError;
+
+    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let message_len: usize = if buf.len() >= USIZE_NET_LEN {
+            deserialize(&buf[..USIZE_NET_LEN]).expect("Failed to parse message length")
+        } else {
+            return Ok(None);
+        };
+        let message: Message = if buf.len() >= USIZE_NET_LEN + message_len {
+            let frame = buf.split_to(USIZE_NET_LEN + message_len);
+            deserialize(&frame[USIZE_NET_LEN..]).expect("Failed to parse message")
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(message))
+    }
+}
+
+// Importantly, wraps its own mutex and does its own cloning
+struct SinkPool<S> where S: Sink {
+    sinks: Arc<Mutex<Vec<S>>>,
+}
+
+impl<S> SinkPool<S> where S: Sink, <S as Sink>::SinkItem: Clone {
+    fn new() -> SinkPool<S> {
+        SinkPool {
+            sinks: Arc::new(Mutex::new(vec![])),
         }
-        let message_len = deserialize(&buf[..USIZE_NET_LEN]).expect("Failed to parse message length");
-        buf.consume(USIZE_NET_LEN);
-        while buf.len() < message_len {
-            buf.read_from(stream)?;
+    }
+
+    fn add_sink(&mut self, sink: S) {
+        let mut sinks = self.sinks.lock().expect("Failed to lock sinks mutex");
+        sinks.push(sink);
+    }
+}
+
+impl<S> Sink for SinkPool<S> where S: Sink, <S as Sink>::SinkItem: Clone {
+    type SinkItem = <S as Sink>::SinkItem;
+    type SinkError = <S as Sink>::SinkError;
+
+    fn start_send(&mut self, item: Self::SinkItem) -> Result<AsyncSink<Self::SinkItem>, Self::SinkError> {
+        let mut sinks = self.sinks.lock().expect("Failed to lock sinks mutex");
+        sinks.iter_mut()
+            .map(|sink| sink.start_send(item.clone()))
+            .fold(Ok(AsyncSink::Ready), |a, b| {
+                match a {
+                    Ok(AsyncSink::Ready) => b,
+                    _ => a,
+                }
+            })
+    }
+
+    fn poll_complete(&mut self) -> Result<Async<()>, Self::SinkError> {
+        let mut sinks = self.sinks.lock().expect("Failed to lock sinks mutex");
+        sinks.iter_mut()
+            .map(|sink| sink.poll_complete())
+            .fold(Ok(Async::Ready(())), |a, b| {
+                match a {
+                    Ok(Async::Ready(())) => b,
+                    _ => a,
+                }
+            })
+    }
+
+    fn close(&mut self) -> Result<Async<()>, Self::SinkError> {
+        let mut sinks = self.sinks.lock().expect("Failed to lock sinks mutex");
+        sinks.iter_mut()
+            .map(|sink| sink.close())
+            .fold(Ok(Async::Ready(())), |a, b| {
+                match a {
+                    Ok(Async::Ready(())) => b,
+                    _ => a,
+                }
+            })
+    }
+}
+
+impl<S> Clone for SinkPool<S> where S: Sink, <S as Sink>::SinkItem: Clone {
+    fn clone(&self) -> Self {
+        Self {
+            sinks: self.sinks.clone()
         }
-        let message = deserialize(&buf[..message_len]).expect("Failed to parse message");
-        buf.consume(message_len);
-        Ok(message)
     }
+}
 
-    fn receive(&mut self) -> io::Result<Message> {
-        let ref mut stream = self.stream;
-        stream.set_nonblocking(false)?;
-        stream.set_read_timeout(Some(Duration::from_secs(10))).expect("Failed to set read timeout");
-        self.do_receive()
+#[derive(Clone, Debug)]
+pub enum MessageCtrl {
+    SendGlobal(Message),
+    SendNearGlobal(Message, SocketAddr),
+    Disconnect,
+}
+
+impl MessageCtrl {
+    pub fn get_message_if_should_send(self, dest: SocketAddr) -> Option<Message> {
+        match self {
+            MessageCtrl::SendGlobal(m) => Some(m),
+            MessageCtrl::SendNearGlobal(m, addr) => {
+                if addr == dest {
+                    None
+                } else {
+                    Some(m)
+                }
+            },
+            MessageCtrl::Disconnect => None,
+        }
     }
+}
 
-    fn try_receive_impl(&mut self) -> io::Result<Message> {
-        let ref mut stream = self.stream;
-        stream.set_nonblocking(true)?;
-        self.do_receive()
+impl Into<MessageCtrl> for Message {
+    fn into(self) -> MessageCtrl {
+        MessageCtrl::SendGlobal(self)
     }
+}
 
-    fn try_receive(&mut self) -> io::Result<Option<Message>> {
-        match self.try_receive_impl() {
-            Ok(x) => Ok(Some(x)),
-            Err(e) => match e.kind() {
-                io::ErrorKind::WouldBlock => Ok(None),
-                _ => Err(e),
+fn handle_incoming(message: Message, source: SocketAddr, state: Arc<Mutex<NetGameState>>, player_id: PlayerID) -> Option<MessageCtrl> {
+    let mut state = state.lock().expect("Failed to acquire state");
+    let is_host = state.is_host(&player_id);
+    match message {
+        Message::JoinLobby(player) => {
+            if let NetGameState::Lobby(ref mut lobby_info) = *state {
+                lobby_info.guests.push(player);
+                return Some(MessageCtrl::SendGlobal(Message::State(state.clone())))
             }
         }
-    }
-}
-
-/// Tracks the type of connection this is
-enum ConnectionInfo {
-    /// Guest, with host connection
-    Guest(TcpConnection),
-    /// Host, with server and list of connected clients
-    Host(TcpListener, Vec<TcpConnection>),
-}
-
-/// Encapsulates connection information and behavior
-pub struct Connection {
-    /// Connection info
-    info: ConnectionInfo,
-}
-
-impl Connection {
-    /// Creates a new host on the given local port
-    pub fn new_host(port: u16) -> io::Result<Connection> {
-        let server = TcpListener::bind(("0.0.0.0", port))?;
-        server.set_nonblocking(true)?;
-        let info = ConnectionInfo::Host(server, vec![]);
-        Ok(Connection {
-            info,
-        })
-    }
-
-    /// Creates a new guest
-    pub fn new_guest(host: SocketAddr) -> io::Result<Connection> {
-        let socket = TcpStream::connect(host)?;
-        let info = ConnectionInfo::Guest(socket.into());
-        Ok(Connection {
-            info,
-        })
-    }
-
-    /// Gets the port of the host
-    pub fn host_port(&self) -> u16 {
-        let result = match self.info {
-            ConnectionInfo::Guest(ref stream) => stream.peer_addr(),
-            ConnectionInfo::Host(ref server, _) => server.local_addr(),
-        };
-        result.expect("Failed to get address").port()
-    }
-
-    fn send_to_all<'a, I>(message: &Message, dests: I) -> io::Result<()> where I: IntoIterator<Item=&'a mut TcpConnection> {
-        dests.into_iter().map(|conn| conn.send(message)).fold(Ok(()), |a, b| a.and(b))
-    }
-
-    fn streams<'a>(&'a mut self) -> Vec<&'a mut TcpConnection> {
-        match self.info {
-            ConnectionInfo::Guest(ref mut host) => vec![host],
-            ConnectionInfo::Host(_, ref mut guests) => guests.iter_mut().collect(),
-        }
-    }
-
-    /// Sends a message to whoever it needs to go to, whether that's the host or all guests
-    pub fn send(&mut self, message: &Message) -> io::Result<()> {
-        let streams = self.streams();
-        Self::send_to_all(message, streams)
-    }
-
-    /// Sends a message to whoever it needs to go to, but ignoring the given address if it would
-    /// otherwise be included
-    pub fn send_without(&mut self, message: &Message, filtered_addr: &SocketAddr) -> io::Result<()> {
-        let dests = self.streams().into_iter().filter(
-            |stream| *filtered_addr != stream.peer_addr().expect("Failed to get address")
-        );
-        Self::send_to_all(message, dests)
-    }
-
-    /// Accepts an incoming connection if we are a host; does nothing if we are a guest
-    pub fn accept(&mut self) -> io::Result<()> {
-        match self.info {
-            ConnectionInfo::Guest(_) => Ok(()),
-            ConnectionInfo::Host(ref mut server, ref mut clients) => {
-                match server.accept() {
-                    Ok((socket, _)) => {
-                        clients.push(socket.into());
-                        Ok(())
-                    },
-                    Err(e) => match e.kind() {
-                        io::ErrorKind::WouldBlock => Ok(()),
-                        _ => Err(e)
-                    }
+        Message::EditPlayer(id, player) => {
+            if let NetGameState::Lobby(ref mut lobby_info) = *state {
+                if is_host {
+                    lobby_info.guests.iter_mut().filter(|p| p.id == id).for_each(|p| *p = player.clone());
+                    return Some(MessageCtrl::SendGlobal(Message::State(state.clone())))
                 }
             }
         }
-    }
-
-    /// Receives a message from the host with a long timeout
-    pub fn receive(&mut self) -> io::Result<Message> {
-        match self.info {
-            ConnectionInfo::Host(_, _) => unimplemented!("Called receive() on a host socket!"),
-            ConnectionInfo::Guest(ref mut stream) => {
-                stream.receive()
+        Message::State(new_state) => {
+            // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
+            *state = new_state;
+            if is_host {
+                return Some(MessageCtrl::SendNearGlobal(Message::State(state.clone()), source))
             }
         }
     }
+    None
+}
 
-    /// Receives a message with a very short timeout
-    pub fn try_receive(&mut self) -> io::Result<Option<(Message, SocketAddr)>> {
-        for stream in self.streams() {
-            match stream.try_receive() {
-                Ok(None) => continue,
-                Ok(Some(m)) => return Ok(Some((m, stream.peer_addr().expect("Failed to get address")))),
-                Err(e) => return Err(e)
-            }
-        }
-        Ok(None)
-    }
+fn handle_error<T: Error>(err: T, state: Arc<Mutex<NetGameState>>) {
+    let mut state = state.lock().expect("Failed to touch state");
+    *state = NetGameState::Error(format!("{}", err));
+}
+
+pub fn run_host(port: u16, state: Arc<Mutex<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
+    let (send, recv) = mpsc::channel(20);
+    let ui_thread_sender = send.clone();
+    thread::spawn(move || {
+        let chain = future::ok(()).map(move |_| {
+            let addr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), port);
+            let server = match TcpListener::bind(&addr) {
+                Ok(x) => x,
+                Err(e) => {
+                    handle_error(e, state);
+                    return;
+                }
+            };
+            let send = send.clone();
+            let err_state = state.clone();
+            let mpsc_err_state = state.clone();
+            let mut net_sink_pool = SinkPool::new();
+            let mpsc_sink_pool = net_sink_pool.clone();
+            let (server_kill, server_killed) = mpsc::channel(1);
+            let (mpsc_kill, mpsc_killed) = mpsc::channel(1);
+            let net_handler = server.incoming()
+                .for_each(move |socket| {
+                    let mut server_kill = server_kill.clone();
+                    let mut mpsc_kill = mpsc_kill.clone();
+                    let (mut client_kill, client_killed) = mpsc::channel(1);
+                    let addr = socket.peer_addr().expect("Failed to get socket peer");
+                    let socket = Framed::new(socket, MessageCodec {});
+                    let (sink, stream) = socket.split();
+                    {
+                        let addr = addr.clone();
+                        let sink = sink.with_flat_map(move |data: MessageCtrl| {
+                            if let MessageCtrl::Disconnect = data {
+                                // ignore errors, because errors mean the channel was already closed
+                                client_kill.try_send(()).unwrap_or(());
+                                server_kill.try_send(()).unwrap_or(());
+                                mpsc_kill.try_send(()).unwrap_or(());
+                            }
+                            let message = data.get_message_if_should_send(addr);
+                            stream::iter_ok(message)
+                        });
+                        net_sink_pool.add_sink(sink);
+                    }
+                    let send = send.clone();
+                    let state = state.clone();
+                    let err_state = state.clone();
+
+                    let incoming = stream
+                        .filter_map(move |message| handle_incoming(message, addr.clone(), state.clone(), player_id))
+                        .forward(send)
+                        .map(|_| ())
+                        .map_err(|err| handle_error(err, err_state));
+                    let incoming_until_killed = incoming.select2(client_killed.into_future())
+                        .map(|_| ())
+                        .map_err(|_| ());
+                    tokio::spawn(incoming_until_killed);
+                    Ok(())
+                })
+                .map_err(move |err| handle_error(err, err_state));
+            let net_handler_until_killed = net_handler.select2(server_killed.into_future())
+                .map(|_| ())
+                .map_err(|_| ());
+            tokio::spawn(net_handler_until_killed);
+            let mpsc_handler = recv
+                .from_err::<MessageCodecError>()
+                .forward(mpsc_sink_pool)
+                .map(|_| ())
+                .map_err(move |err| handle_error(err, mpsc_err_state));
+            let mpsc_handler_until_killed = mpsc_handler.select2(mpsc_killed.into_future())
+                .map(|_| ())
+                .map_err(|_| ());
+            tokio::spawn(mpsc_handler_until_killed);
+        });
+        tokio::run(chain);
+    });
+    return ui_thread_sender;
+}
+
+pub fn run_guest(host: SocketAddr, state: Arc<Mutex<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
+    let (send, recv) = mpsc::channel(20);
+    let ui_thread_sender = send.clone();
+    thread::spawn(move || {
+        let err_state = state.clone();
+        let net_handler = TcpStream::connect(&host)
+            .and_then(move |socket| {
+                let addr = socket.peer_addr().expect("Failed to get socket peer");
+                let socket = Framed::new(socket, MessageCodec {});
+                let (sink, stream) = socket.split();
+                let send = send.clone();
+                let state = state.clone();
+                let err_state = state.clone();
+                let mpsc_err_state = state.clone();
+                let (mut client_kill, client_killed) = mpsc::channel(1);
+                let (mut mpsc_kill, mpsc_killed) = mpsc::channel(1);
+                let sink = sink.with_flat_map(move |data: MessageCtrl| {
+                    if let MessageCtrl::Disconnect = data {
+                        // ignore errors, because errors mean the channel was already closed
+                        client_kill.try_send(()).unwrap_or(());
+                        mpsc_kill.try_send(()).unwrap_or(());
+                    }
+                    let message = data.get_message_if_should_send(addr);
+                    stream::iter_ok(message)
+                });
+
+                let incoming = stream
+                    .filter_map(move |message| handle_incoming(message, addr.clone(), state.clone(), player_id))
+                    .forward(send)
+                    .map(|_| ())
+                    .map_err(|err| handle_error(err, err_state));
+                let incoming_until_killed = incoming.select2(client_killed.into_future())
+                    .map(|_| ())
+                    .map_err(|_| ());
+                tokio::spawn(incoming_until_killed);
+                let mpsc_handler = recv
+                    .from_err::<MessageCodecError>()
+                    .forward(sink)
+                    .map(|_| ())
+                    .map_err(move |err| handle_error(err, mpsc_err_state));
+                let mpsc_handler_until_killed = mpsc_handler.select2(mpsc_killed.into_future())
+                    .map(|_| ())
+                    .map_err(|_| ());
+                tokio::spawn(mpsc_handler_until_killed);
+                Ok(())
+            })
+            .from_err::<MessageCodecError>()
+            .map_err(move |err| handle_error(err, err_state));
+        tokio::run(net_handler);
+    });
+    return ui_thread_sender;
 }

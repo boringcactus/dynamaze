@@ -43,12 +43,12 @@ impl GameView {
             }
             GameState::InGame(ref conn_state) => {
                 let ref state = conn_state.state;
-                match state {
+                let state = state.lock().expect("Failed to acquire state mutex");
+                match *state {
                     NetGameState::Lobby(ref info) => {
-                        // TODO don't do this
-                        let port = conn_state.connection.host_port();
+                        // TODO reintroduce port number somehow
                         let status = if state.is_host(&controller.player_id) {
-                            format!("Hosting on port {}, ", port)
+                            format!("Hosting")
                         } else {
                             "Connected to lobby".to_string()
                         };
@@ -81,6 +81,17 @@ impl GameView {
                         // TODO don't do this
                         let text = format!("{} wins! Click to return to main menu", info.winner.name);
                         let transform = c.transform.trans(0.0, 60.0);
+                        graphics::text(colors::DARK, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
+                    }
+                    NetGameState::Error(ref text) => {
+                        // TODO don't do this
+                        let msg = "Network error:";
+                        let transform = c.transform.trans(0.0, 60.0);
+                        graphics::text(colors::DARK, 20, &msg, glyphs, transform, g).ok().expect("Failed to draw text");
+                        let transform = c.transform.trans(0.0, 100.0);
+                        graphics::text(colors::DARK, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
+                        let text = "Click to return to main menu";
+                        let transform = c.transform.trans(0.0, 140.0);
                         graphics::text(colors::DARK, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
                     }
                 }

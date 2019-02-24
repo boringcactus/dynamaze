@@ -1,15 +1,18 @@
 //! Menu / global state controller
 
+use std::sync::Arc;
+use std::sync::Mutex;
+
 use clipboard::{ClipboardContext, ClipboardProvider};
 use piston::input::{GenericEvent, Key};
 use rand::prelude::*;
 
 use crate::{Player, PlayerID};
 use crate::BoardController;
-use crate::Connection;
 use crate::GameView;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
-use crate::net::Message;
+use crate::net::{self, Message};
+use crate::net::MessageCtrl;
 
 // TODO don't do this, don't at all do this, why the fuck am i doing this
 fn to_char(key: &Key, shift: bool) -> Option<char> {
@@ -147,41 +150,6 @@ impl GameController {
     pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E) {
         use piston::input::{Button, MouseButton};
 
-        // TODO find a way to move this to its own thread cleanly
-        // TODO handle host/guest reasonably
-        if e.after_render_args().is_some() {
-            if let GameState::InGame(ref mut conn_state) = self.state {
-                let ref mut connection = conn_state.connection;
-                let ref mut state = conn_state.state;
-                let is_host = state.is_host(&self.player_id);
-                connection.accept().expect("Failed to accept connection");
-                match connection.try_receive().expect("Failed to receive packet") {
-                    Some((Message::JoinLobby(player), _)) => {
-                        if let NetGameState::Lobby(ref mut lobby_info) = state {
-                            lobby_info.guests.push(player);
-                            self.broadcast_state();
-                        }
-                    }
-                    Some((Message::EditPlayer(id, player), _)) => {
-                        if let NetGameState::Lobby(ref mut lobby_info) = state {
-                            if is_host {
-                                lobby_info.guests.iter_mut().filter(|p| p.id == id).for_each(|p| *p = player.clone());
-                                self.broadcast_state();
-                            }
-                        }
-                    }
-                    Some((Message::State(new_state), source)) => {
-                        // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
-                        *state = new_state;
-                        if is_host {
-                            connection.send_without(&Message::State(state.clone()), &source).expect("Failed to send message");
-                        }
-                    }
-                    None => {}
-                }
-            }
-        }
-
         if let Some(state) = e.button_args() {
             if state.button == Button::Keyboard(Key::LShift) || state.button == Button::Keyboard(Key::RShift) {
                 use piston::input::ButtonState;
@@ -194,11 +162,12 @@ impl GameController {
                 if let Some(Button::Mouse(button)) = e.press_args() {
                     match button {
                         MouseButton::Left => {
-                            let connection = Connection::new_host(12543).expect("Failed to start server on port 12543");
                             let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
+                            let state = Arc::new(Mutex::new(state));
+                            let sender = net::run_host(12543, state.clone(), self.player_id);
                             let conn_state = ConnectedState {
-                                connection,
                                 state,
+                                sender,
                             };
                             self.state = GameState::InGame(conn_state);
                         }
@@ -215,15 +184,17 @@ impl GameController {
                 }
                 if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
                     let address = address.parse().expect("Invalid address!");
-                    let mut connection = Connection::new_guest(address).expect("Failed to connect");
+                    let state = NetGameState::Error("Connecting...".to_string());
+                    let state = Arc::new(Mutex::new(state));
+                    let mut sender = net::run_guest(address, state.clone(), self.player_id);
                     let mut rng = thread_rng();
                     let r = rng.gen_range(0.0, 1.0);
                     let g = rng.gen_range(0.0, 1.0);
                     let b = rng.gen_range(0.0, 1.0);
                     let player = Player::new("Guesty McGuestface".into(), [r, g, b, 1.0], self.player_id);
-                    let state = NetGameState::join_lobby(&mut connection, player).expect("Failed to receive state");
+                    NetGameState::join_lobby(&mut sender, player);
                     let conn_state = ConnectedState {
-                        connection,
+                        sender,
                         state,
                     };
                     self.state = GameState::InGame(conn_state);
@@ -233,66 +204,98 @@ impl GameController {
                 }
             }
             GameState::InGame(ref mut conn_state) => {
-                let ref mut connection = conn_state.connection;
+                let ref mut sender = conn_state.sender;
                 let ref mut state = conn_state.state;
-                let is_host = state.is_host(&self.player_id);
-                match state {
-                    NetGameState::Lobby(ref mut info) => {
-                        // TODO remember name and color
-                        if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                            let mut player = info.player(&self.player_id).clone();
-                            let mut rng = thread_rng();
-                            let r = rng.gen_range(0.0, 1.0);
-                            let g = rng.gen_range(0.0, 1.0);
-                            let b = rng.gen_range(0.0, 1.0);
-                            player.color = [r, g, b, 1.0];
-                            if is_host {
-                                info.host = player;
-                                self.broadcast_state();
-                            } else {
-                                let message = Message::EditPlayer(self.player_id, player);
-                                connection.send(&message).expect("Failed to send message");
-                            }
-                        } else if let Some(Button::Mouse(MouseButton::Right)) = e.press_args() {
-                            if is_host {
-                                let players = info.players();
-                                let board_controller = BoardController::new(7, 7, players, info.host.id);
-                                let net_state = NetGameState::Active(board_controller);
-                                *state = net_state;
-                                self.broadcast_state();
-                            }
-                        } else if let Some(Button::Keyboard(ref key)) = e.press_args() {
-                            let mut player = info.player(&self.player_id).clone();
-                            let old_name = player.name.clone();
-                            apply_key(&mut player.name, key, self.shift);
-                            if player.name != old_name {
+                let (broadcast, new_state, new_net_state) = {
+                    let mut state = state.lock().expect("Failed to lock state");
+                    let is_host = state.is_host(&self.player_id);
+                    match *state {
+                        NetGameState::Lobby(ref mut info) => {
+                            // TODO remember name and color
+                            if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
+                                let mut player = info.player(&self.player_id).clone();
+                                let mut rng = thread_rng();
+                                let r = rng.gen_range(0.0, 1.0);
+                                let g = rng.gen_range(0.0, 1.0);
+                                let b = rng.gen_range(0.0, 1.0);
+                                player.color = [r, g, b, 1.0];
                                 if is_host {
                                     info.host = player;
+                                    (true, None, None)
                                 } else {
                                     let message = Message::EditPlayer(self.player_id, player);
-                                    connection.send(&message).expect("Failed to send message");
+                                    sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+                                    (false, None, None)
                                 }
+                            } else if let Some(Button::Mouse(MouseButton::Right)) = e.press_args() {
+                                if is_host {
+                                    let players = info.players();
+                                    let board_controller = BoardController::new(7, 7, players, info.host.id);
+                                    let net_state = NetGameState::Active(board_controller);
+                                    (true, None, Some(net_state))
+                                } else {
+                                    (false, None, None)
+                                }
+                            } else if let Some(Button::Keyboard(ref key)) = e.press_args() {
+                                let mut player = info.player(&self.player_id).clone();
+                                let old_name = player.name.clone();
+                                apply_key(&mut player.name, key, self.shift);
+                                if player.name != old_name {
+                                    if is_host {
+                                        info.host = player;
+                                    } else {
+                                        let message = Message::EditPlayer(self.player_id, player);
+                                        sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+                                    }
+                                }
+                                (false, None, None)
+                            } else {
+                                (false, None, None)
+                            }
+                        }
+                        NetGameState::Active(ref mut board_controller) => {
+                            let state_dirty = board_controller.event(&view.board_view, e, &self.player_id);
+                            if state_dirty {
+                                if let Some(winner) = board_controller.winner() {
+                                    let info = GameOverInfo {
+                                        winner: winner.clone(),
+                                        host_id: board_controller.host_id,
+                                    };
+                                    (true, None, Some(NetGameState::GameOver(info)))
+                                } else {
+                                    (true, None, None)
+                                }
+                            } else {
+                                (false, None, None)
+                            }
+                        }
+                        NetGameState::GameOver(_) => {
+                            if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
+                                sender.try_send(MessageCtrl::Disconnect).map_err(|_| ()).expect("Failed to send message");
+                                (false, Some(GameState::MainMenu), None)
+                            } else {
+                                (false, None, None)
+                            }
+                        }
+                        NetGameState::Error(_) => {
+                            if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
+                                sender.try_send(MessageCtrl::Disconnect).map_err(|_| ()).expect("Failed to send message");
+                                (false, Some(GameState::MainMenu), None)
+                            } else {
+                                (false, None, None)
                             }
                         }
                     }
-                    NetGameState::Active(ref mut board_controller) => {
-                        let state_dirty = board_controller.event(&view.board_view, e, &self.player_id);
-                        if state_dirty {
-                            if let Some(winner) = board_controller.winner() {
-                                let info = GameOverInfo {
-                                    winner: winner.clone(),
-                                    host_id: board_controller.host_id,
-                                };
-                                *state = NetGameState::GameOver(info);
-                            }
-                            self.broadcast_state();
-                        }
-                    }
-                    NetGameState::GameOver(_) => {
-                        if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                            self.state = GameState::MainMenu;
-                        }
-                    }
+                };
+                if let Some(ns) = new_net_state {
+                    let mut state = state.lock().expect("Failed to lock state");
+                    *state = ns;
+                }
+                if let Some(s) = new_state {
+                    self.state = s;
+                }
+                if broadcast {
+                    self.broadcast_state();
                 }
             }
         }
@@ -301,9 +304,11 @@ impl GameController {
     // TODO maybe don't do this
     fn broadcast_state(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let ref mut connection = conn_state.connection;
-            let ref state = conn_state.state;
-            connection.send(&Message::State(state.clone())).expect("Failed to send message");
+            let ref mut sender = conn_state.sender;
+            let ref mut state = conn_state.state;
+            let state = state.lock().expect("Failed to lock state");
+            let message = Message::State(state.clone());
+            sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
         }
     }
 }
