@@ -130,22 +130,56 @@ pub struct GameController {
     pub player_id: PlayerID,
     /// Whether or not the shift key is currently pressed
     shift: bool,
+    /// Active player ID the last time the state was checked for a notification
+    last_player: Option<PlayerID>,
 }
 
 impl GameController {
     /// Creates a new GameController
     pub fn new() -> GameController {
         let player_id = random();
+        sound::sound.play_music(sound::Music::Menu);
         GameController {
             state: GameState::MainMenu,
             player_id,
             shift: false,
+            last_player: None,
         }
     }
 
     /// Handles events
     pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E) {
         use piston::input::{Button, MouseButton};
+
+        // This is silly.
+        if let Some(_) = e.render_args() {
+            let old_last_player = self.last_player.clone();
+
+            let music = match self.state {
+                GameState::MainMenu | GameState::ConnectMenu(_) => {
+                    self.last_player = None;
+                    sound::Music::Menu
+                },
+                GameState::InGame(ref conn_state) => {
+                    let state = conn_state.state.read().unwrap();
+                    match *state {
+                        NetGameState::Active(ref board) => {
+                            self.last_player = Some(*board.active_player_id());
+                            sound::Music::InGame
+                        },
+                        _ => {
+                            self.last_player = None;
+                            sound::Music::Menu
+                        },
+                    }
+                }
+            };
+            sound::sound.play_music(music);
+
+            if old_last_player != self.last_player && self.last_player == Some(self.player_id) {
+                sound::sound.play_sound(sound::Sound::YourTurn);
+            }
+        }
 
         if let Some(state) = e.button_args() {
             if state.button == Button::Keyboard(Key::LShift) || state.button == Button::Keyboard(Key::RShift) {
@@ -276,7 +310,7 @@ impl GameController {
                         }
                         NetGameState::Error(_) => {
                             if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                                sender.try_send(MessageCtrl::Disconnect).map_err(|_| ()).expect("Failed to send message");
+                                sender.try_send(MessageCtrl::Disconnect).map_err(|_| ()).unwrap_or(());
                                 (false, Some(GameState::MainMenu), None)
                             } else {
                                 (false, None, None)

@@ -9,9 +9,12 @@ extern crate clipboard;
 extern crate futures;
 extern crate glutin_window;
 extern crate graphics;
+#[macro_use]
+extern crate lazy_static;
 extern crate opengl_graphics;
 extern crate piston;
 extern crate rand;
+extern crate rodio;
 #[macro_use]
 extern crate serde_derive;
 extern crate tokio;
@@ -41,6 +44,7 @@ mod menu_controller;
 mod menu_view;
 mod net;
 mod player;
+mod sound;
 mod tile;
 
 fn main() {
