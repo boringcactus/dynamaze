@@ -1,6 +1,6 @@
 //! Game menu logic
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use tokio::sync::mpsc;
 
@@ -99,7 +99,7 @@ pub struct ConnectedState {
     /// Message passing mechanism
     pub sender: mpsc::Sender<MessageCtrl>,
     /// Game state
-    pub state: Arc<Mutex<NetGameState>>,
+    pub state: Arc<RwLock<NetGameState>>,
 }
 
 pub enum GameState {

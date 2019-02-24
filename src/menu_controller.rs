@@ -1,6 +1,6 @@
 //! Menu / global state controller
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use clipboard::{ClipboardContext, ClipboardProvider};
 use piston::input::{GenericEvent, Key};
@@ -9,6 +9,7 @@ use rand::prelude::*;
 use crate::{BoardController, GameView, Player, PlayerID};
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
 use crate::net::{self, Message, MessageCtrl};
+use crate::sound;
 
 // TODO don't do this, don't at all do this, why the fuck am i doing this
 fn to_char(key: &Key, shift: bool) -> Option<char> {
@@ -159,7 +160,7 @@ impl GameController {
                     match button {
                         MouseButton::Left => {
                             let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
-                            let state = Arc::new(Mutex::new(state));
+                            let state = Arc::new(RwLock::new(state));
                             let sender = net::run_host(12543, state.clone(), self.player_id);
                             let conn_state = ConnectedState {
                                 state,
@@ -181,7 +182,7 @@ impl GameController {
                 if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
                     let address = address.parse().expect("Invalid address!");
                     let state = NetGameState::Error("Connecting...".to_string());
-                    let state = Arc::new(Mutex::new(state));
+                    let state = Arc::new(RwLock::new(state));
                     let mut sender = net::run_guest(address, state.clone(), self.player_id);
                     let mut rng = thread_rng();
                     let r = rng.gen_range(0.0, 1.0);
@@ -203,7 +204,7 @@ impl GameController {
                 let ref mut sender = conn_state.sender;
                 let ref mut state = conn_state.state;
                 let (broadcast, new_state, new_net_state) = {
-                    let mut state = state.lock().expect("Failed to lock state");
+                    let mut state = state.write().expect("Failed to lock state");
                     let is_host = state.is_host(&self.player_id);
                     match *state {
                         NetGameState::Lobby(ref mut info) => {
@@ -284,7 +285,7 @@ impl GameController {
                     }
                 };
                 if let Some(ns) = new_net_state {
-                    let mut state = state.lock().expect("Failed to lock state");
+                    let mut state = state.write().expect("Failed to lock state");
                     *state = ns;
                 }
                 if let Some(s) = new_state {
@@ -302,7 +303,7 @@ impl GameController {
         if let GameState::InGame(ref mut conn_state) = self.state {
             let ref mut sender = conn_state.sender;
             let ref mut state = conn_state.state;
-            let state = state.lock().expect("Failed to lock state");
+            let state = state.read().expect("Failed to lock state");
             let message = Message::State(state.clone());
             sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
         }

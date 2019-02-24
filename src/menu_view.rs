@@ -41,7 +41,7 @@ impl GameView {
             }
             GameState::InGame(ref conn_state) => {
                 let ref state = conn_state.state;
-                let state = state.lock().expect("Failed to acquire state mutex");
+                let state = state.read().expect("Failed to acquire state mutex");
                 match *state {
                     NetGameState::Lobby(ref info) => {
                         // TODO reintroduce port number somehow

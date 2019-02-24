@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
 use bincode::{deserialize, serialize};
@@ -201,8 +201,8 @@ impl Into<MessageCtrl> for Message {
     }
 }
 
-fn handle_incoming(message: Message, source: SocketAddr, state: Arc<Mutex<NetGameState>>, player_id: PlayerID) -> Option<MessageCtrl> {
-    let mut state = state.lock().expect("Failed to acquire state");
+fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Option<MessageCtrl> {
+    let mut state = state.write().expect("Failed to acquire state");
     let is_host = state.is_host(&player_id);
     match message {
         Message::JoinLobby(player) => {
@@ -230,12 +230,12 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<Mutex<NetGam
     None
 }
 
-fn handle_error<T: Error>(err: T, state: Arc<Mutex<NetGameState>>) {
-    let mut state = state.lock().expect("Failed to touch state");
+fn handle_error<T: Error>(err: T, state: Arc<RwLock<NetGameState>>) {
+    let mut state = state.write().expect("Failed to touch state");
     *state = NetGameState::Error(format!("{}", err));
 }
 
-pub fn run_host(port: u16, state: Arc<Mutex<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
+pub fn run_host(port: u16, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
     let (send, recv) = mpsc::channel(20);
     let ui_thread_sender = send.clone();
     thread::spawn(move || {
@@ -312,7 +312,7 @@ pub fn run_host(port: u16, state: Arc<Mutex<NetGameState>>, player_id: PlayerID)
     return ui_thread_sender;
 }
 
-pub fn run_guest(host: SocketAddr, state: Arc<Mutex<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
+pub fn run_guest(host: SocketAddr, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
     let (send, recv) = mpsc::channel(20);
     let ui_thread_sender = send.clone();
     thread::spawn(move || {
