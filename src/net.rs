@@ -32,7 +32,8 @@ pub enum Message {
 
 #[derive(Debug)]
 enum MessageCodecError {
-    IO(std::io::Error),
+    AddrParse(::std::net::AddrParseError),
+    IO(::std::io::Error),
     Send(mpsc::error::SendError),
     Recv(mpsc::error::RecvError),
 }
@@ -40,6 +41,7 @@ enum MessageCodecError {
 impl Display for MessageCodecError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
+            MessageCodecError::AddrParse(ref x) => x.fmt(f),
             MessageCodecError::IO(ref x) => x.fmt(f),
             MessageCodecError::Send(ref x) => f.write_fmt(format_args!("Send({})", x)),
             MessageCodecError::Recv(ref x) => f.write_fmt(format_args!("Recv({:?})", x)),
@@ -49,9 +51,15 @@ impl Display for MessageCodecError {
 
 impl Error for MessageCodecError {}
 
+impl From<::std::net::AddrParseError> for MessageCodecError {
+    fn from(e: ::std::net::AddrParseError) -> Self {
+        MessageCodecError::AddrParse(e)
+    }
+}
+
 impl From<std::io::Error> for MessageCodecError {
     fn from(e: std::io::Error) -> Self {
-        MessageCodecError::IO(e.into())
+        MessageCodecError::IO(e)
     }
 }
 
@@ -253,12 +261,10 @@ pub fn run_host(port: u16, state: Arc<RwLock<NetGameState>>, player_id: PlayerID
             let mpsc_err_state = state.clone();
             let mut net_sink_pool = SinkPool::new();
             let mpsc_sink_pool = net_sink_pool.clone();
-            let (server_kill, server_killed) = mpsc::channel(1);
-            let (mpsc_kill, mpsc_killed) = mpsc::channel(1);
+            let (mut server_kill, server_killed) = mpsc::channel(1);
+            let (mut mpsc_kill, mpsc_killed) = mpsc::channel(1);
             let net_handler = server.incoming()
                 .for_each(move |socket| {
-                    let mut server_kill = server_kill.clone();
-                    let mut mpsc_kill = mpsc_kill.clone();
                     let (mut client_kill, client_killed) = mpsc::channel(1);
                     let addr = socket.peer_addr().expect("Failed to get socket peer");
                     let socket = Framed::new(socket, MessageCodec {});
@@ -267,10 +273,9 @@ pub fn run_host(port: u16, state: Arc<RwLock<NetGameState>>, player_id: PlayerID
                         let addr = addr.clone();
                         let sink = sink.with_flat_map(move |data: MessageCtrl| {
                             if let MessageCtrl::Disconnect = data {
+                                println!("Got Disconnect");
                                 // ignore errors, because errors mean the channel was already closed
                                 client_kill.try_send(()).unwrap_or(());
-                                server_kill.try_send(()).unwrap_or(());
-                                mpsc_kill.try_send(()).unwrap_or(());
                             }
                             let message = data.get_message_if_should_send(addr);
                             stream::iter_ok(message)
@@ -298,6 +303,14 @@ pub fn run_host(port: u16, state: Arc<RwLock<NetGameState>>, player_id: PlayerID
                 .map_err(|_| ());
             tokio::spawn(net_handler_until_killed);
             let mpsc_handler = recv
+                .inspect(move |data: &MessageCtrl| {
+                    if let MessageCtrl::Disconnect = data {
+                        println!("Got Disconnect");
+                        // ignore errors, because errors mean the channel was already closed
+                        server_kill.try_send(()).unwrap_or(());
+                        mpsc_kill.try_send(()).unwrap_or(());
+                    }
+                })
                 .from_err::<MessageCodecError>()
                 .forward(mpsc_sink_pool)
                 .map(|_| ())
@@ -312,12 +325,15 @@ pub fn run_host(port: u16, state: Arc<RwLock<NetGameState>>, player_id: PlayerID
     return ui_thread_sender;
 }
 
-pub fn run_guest(host: SocketAddr, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
+pub fn run_guest(host: &String, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
     let (send, recv) = mpsc::channel(20);
+    let host = host.clone();
     let ui_thread_sender = send.clone();
     thread::spawn(move || {
         let err_state = state.clone();
-        let net_handler = TcpStream::connect(&host)
+        let net_handler = host.parse::<SocketAddr>().into_future()
+            .from_err::<MessageCodecError>()
+            .and_then(|addr| TcpStream::connect(&addr).from_err())
             .and_then(move |socket| {
                 let addr = socket.peer_addr().expect("Failed to get socket peer");
                 let socket = Framed::new(socket, MessageCodec {});
@@ -329,11 +345,6 @@ pub fn run_guest(host: SocketAddr, state: Arc<RwLock<NetGameState>>, player_id: 
                 let (mut client_kill, client_killed) = mpsc::channel(1);
                 let (mut mpsc_kill, mpsc_killed) = mpsc::channel(1);
                 let sink = sink.with_flat_map(move |data: MessageCtrl| {
-                    if let MessageCtrl::Disconnect = data {
-                        // ignore errors, because errors mean the channel was already closed
-                        client_kill.try_send(()).unwrap_or(());
-                        mpsc_kill.try_send(()).unwrap_or(());
-                    }
                     let message = data.get_message_if_should_send(addr);
                     stream::iter_ok(message)
                 });
@@ -348,6 +359,14 @@ pub fn run_guest(host: SocketAddr, state: Arc<RwLock<NetGameState>>, player_id: 
                     .map_err(|_| ());
                 tokio::spawn(incoming_until_killed);
                 let mpsc_handler = recv
+                    .inspect(move |data: &MessageCtrl| {
+                        if let MessageCtrl::Disconnect = data {
+                            println!("Got Disconnect");
+                            // ignore errors, because errors mean the channel was already closed
+                            client_kill.try_send(()).unwrap_or(());
+                            mpsc_kill.try_send(()).unwrap_or(());
+                        }
+                    })
                     .from_err::<MessageCodecError>()
                     .forward(sink)
                     .map(|_| ())
