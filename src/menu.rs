@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 
 use crate::{BoardController, Player, PlayerID};
+use crate::colors::Color;
 use crate::net::{Message, MessageCtrl};
 
 /// Lobby information
@@ -23,7 +24,7 @@ impl LobbyInfo {
     pub fn new(player_id: PlayerID) -> LobbyInfo {
         LobbyInfo {
             name: "DynaMaze Lobby".into(),
-            host: Player::new("Host McHostface".into(), [0.7, 0.2, 0.7, 1.0], player_id),
+            host: Player::new("Host McHostface".into(), Color(0.7, 0.2, 0.7), player_id),
             guests: vec![],
         }
     }

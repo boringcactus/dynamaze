@@ -1,6 +1,6 @@
 //! Player information
 
-use graphics::types::Color;
+use crate::colors::Color;
 
 /// The ID assigned to a player
 pub type PlayerID = u64;

@@ -133,17 +133,17 @@ impl BoardViewSettings {
             position: [0.0; 2],
             width,
             height,
-            background_color: colors::TEAL,
-            reachable_background_color: colors::LIGHT,
-            border_color: colors::DARK,
-            board_edge_color: colors::DARK,
-            cell_edge_color: colors::DARK,
+            background_color: colors::TEAL.into(),
+            reachable_background_color: colors::LIGHT.into(),
+            border_color: colors::DARK.into(),
+            board_edge_color: colors::DARK.into(),
+            cell_edge_color: colors::DARK.into(),
             board_edge_radius: 3.0,
             cell_edge_radius: 1.0,
-            text_color: colors::DARK,
-            wall_color: colors::BLUE,
+            text_color: colors::DARK.into(),
+            wall_color: colors::BLUE.into(),
             wall_width: 0.3,
-            insert_guide_color: colors::PURPLE,
+            insert_guide_color: colors::PURPLE.into(),
             ui_margin_south: 100.0,
             ui_margin_east: 300.0,
             font_size: 25,
@@ -517,7 +517,7 @@ impl BoardView {
             let tile = self.tile_extents(controller, row, col);
             let token_rect = tile - wall_width;
 
-            let token_ellipse = Ellipse::new(player.color);
+            let token_ellipse = Ellipse::new(player.color.into());
             token_ellipse.draw(token_rect.clone(), &c.draw_state, c.transform, g);
             if token.player_id == *local_id {
                 let token_core = Ellipse::new([0.0, 0.0, 0.0, 1.0]);
@@ -577,7 +577,7 @@ impl BoardView {
                 graphics::text(self.settings.text_color, 15, &player.name, glyphs, transform, g).ok().expect("Failed to draw text");
                 north += 10.0;
 
-                graphics::ellipse(player.color, [west, north, 15.0, 15.0], c.transform, g);
+                graphics::ellipse(player.color.into(), [west, north, 15.0, 15.0], c.transform, g);
                 let text = format!("{} remaining", token.targets.len());
                 let transform = c.transform.trans(west + 20.0, north + 10.0);
                 graphics::text(self.settings.text_color, 15, &text, glyphs, transform, g).ok().expect("Failed to draw text");

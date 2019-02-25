@@ -7,118 +7,25 @@ use piston::input::{GenericEvent, Key};
 use rand::prelude::*;
 
 use crate::{BoardController, GameView, Player, PlayerID};
+use crate::colors;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
 use crate::net::{self, Message, MessageCtrl};
 use crate::sound;
 
-// TODO don't do this, don't at all do this, why the fuck am i doing this
-fn to_char(key: &Key, shift: bool) -> Option<char> {
-    use piston::input::Key::*;
-    let (result, shift_result) = match key {
-        A | NumPadA => ('a', 'A'),
-        B | NumPadB => ('b', 'B'),
-        C | NumPadC => ('c', 'C'),
-        D | NumPadD => ('d', 'D'),
-        E | NumPadE => ('e', 'E'),
-        F | NumPadF => ('f', 'F'),
-        G => ('g', 'G'),
-        H => ('h', 'H'),
-        I => ('i', 'I'),
-        J => ('j', 'J'),
-        K => ('k', 'K'),
-        L => ('l', 'L'),
-        M => ('m', 'M'),
-        N => ('n', 'N'),
-        O => ('o', 'O'),
-        P => ('p', 'P'),
-        Q => ('q', 'Q'),
-        R => ('r', 'R'),
-        S => ('s', 'S'),
-        T => ('t', 'T'),
-        U => ('u', 'U'),
-        V => ('v', 'V'),
-        W => ('w', 'W'),
-        X => ('x', 'X'),
-        Y => ('y', 'Y'),
-        Z => ('z', 'Z'),
-        D0 | NumPad0 => ('0', ')'),
-        D1 | NumPad1 => ('1', '!'),
-        D2 | NumPad2 => ('2', '@'),
-        D3 | NumPad3 => ('3', '#'),
-        D4 | NumPad4 => ('4', '$'),
-        D5 | NumPad5 => ('5', '%'),
-        D6 | NumPad6 => ('6', '^'),
-        D7 | NumPad7 => ('7', '&'),
-        D8 | NumPad8 => ('8', '*'),
-        D9 | NumPad9 => ('9', '('),
-        Space | NumPadSpace => (' ', ' '),
-        Period | NumPadPeriod => ('.', '>'),
-        Exclaim | NumPadExclam => ('!', '!'),
-        Quotedbl => ('"', '"'),
-        Hash | NumPadHash => ('#', '#'),
-        Dollar => ('$', '$'),
-        Percent | NumPadPercent => ('%', '%'),
-        Ampersand | NumPadAmpersand => ('&', '&'),
-        Quote => ('\'', '"'),
-        LeftParen | NumPadLeftParen => ('(', '('),
-        RightParen | NumPadRightParen => (')', ')'),
-        Asterisk | NumPadMultiply => ('*', '*'),
-        Plus | NumPadPlus => ('+', '+'),
-        Comma | NumPadComma => (',', '<'),
-        Minus | NumPadMinus => ('-', '_'),
-        Slash | NumPadDivide => ('/', '?'),
-        Semicolon => (';', ':'),
-        Less | NumPadLess => ('<', '<'),
-        Equals | NumPadEquals | NumPadEqualsAS400 => ('=', '+'),
-        Greater | NumPadGreater => ('>', '>'),
-        Question => ('?', '?'),
-        At | NumPadAt => ('@', '@'),
-        LeftBracket => ('[', '{'),
-        Backslash => ('\\', '|'),
-        RightBracket => (']', '}'),
-        Colon | NumPadColon => (':', ':'),
-        Caret | NumPadXor => ('^', '^'),
-        Underscore => ('_', '_'),
-        Backquote => ('`', '~'),
-        NumPadLeftBrace => ('{', '{'),
-        NumPadRightBrace => ('}', '}'),
-        NumPadVerticalBar => ('|', '|'),
-        Backspace | Unknown | Tab | Return | Escape | Delete | CapsLock | F1 | F2 | F3 | F4 | F5
-        | F6 | F7 | F8 | F9 | F10 | F11 | F12 | F13 | F14 | F15 | F16 | F17 | F18 | F19 | F20
-        | F21 | F22 | F23 | F24 | PrintScreen | ScrollLock | Pause | Insert | Home | PageUp
-        | PageDown | End | Right | Left | Down | Up | NumLockClear | NumPadEnter | Application
-        | Power | Execute | Help | Menu | Select | Stop | Again | Undo | Cut | Copy | Paste
-        | Find | Mute | VolumeDown | VolumeUp | AltErase | Sysreq | Cancel | Clear | Prior
-        | Return2 | Separator | Out | Oper | ClearAgain | CrSel | ExSel | NumPad00 | NumPad000
-        | ThousandsSeparator | DecimalSeparator | CurrencyUnit | CurrencySubUnit | NumPadTab
-        | NumPadBackspace | NumPadPower | NumPadDblAmpersand | NumPadDblVerticalBar
-        | NumPadMemStore | NumPadMemRecall | NumPadMemClear | NumPadMemAdd | NumPadMemSubtract
-        | NumPadMemMultiply | NumPadMemDivide | NumPadPlusMinus | NumPadClear | NumPadClearEntry
-        | NumPadBinary | NumPadOctal | NumPadDecimal | NumPadHexadecimal | LCtrl | LShift | LAlt
-        | RCtrl | RShift | RAlt | LGui | RGui | Mode | AudioNext | AudioPrev | AudioStop
-        | AudioPlay | AudioMute | MediaSelect | Www | Mail | Calculator | Computer | AcSearch
-        | AcHome | AcBack | AcBookmarks | AcForward | AcStop | AcRefresh | BrightnessDown
-        | BrightnessUp | DisplaySwitch | KbdIllumDown | KbdIllumToggle | KbdIllumUp | Eject
-        | Sleep => return None,
-    };
-    if shift {
-        Some(shift_result)
-    } else {
-        Some(result)
-    }
-}
-
-fn apply_key(string: &mut String, key: &Key, shift: bool) {
-    use piston::input::Key::*;
-    if let Some(c) = to_char(key, shift) {
-        string.push(c);
-        return;
-    }
-    match key {
-        Backspace => {
-            string.pop();
-        }
-        _ => (),
+widget_ids! {
+    pub struct Ids {
+        canvas,
+        menu_header,
+        host_button,
+        connect_button,
+        ip_box,
+        lobby_name,
+        color_button,
+        name_box,
+        start_button,
+        color_demo,
+        main_menu_button,
+        error_text,
     }
 }
 
@@ -130,6 +37,8 @@ pub struct GameController {
     pub player_id: PlayerID,
     /// Whether or not the shift key is currently pressed
     shift: bool,
+    /// Whether or not the ctrl key is currently pressed
+    ctrl: bool,
     /// Active player ID the last time the state was checked for a notification
     last_player: Option<PlayerID>,
 }
@@ -143,13 +52,111 @@ impl GameController {
             state: GameState::MainMenu,
             player_id,
             shift: false,
+            ctrl: false,
             last_player: None,
         }
     }
 
+    fn host(&mut self) {
+        let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
+        let state = Arc::new(RwLock::new(state));
+        let sender = net::run_host(12543, state.clone(), self.player_id);
+        let conn_state = ConnectedState {
+            state,
+            sender,
+        };
+        self.state = GameState::InGame(conn_state);
+    }
+
+    fn connect(&mut self) {
+        self.state = GameState::ConnectMenu("127.0.0.1:12543".into());
+    }
+
+    fn do_connect(&mut self) {
+        if let GameState::ConnectMenu(ref address) = self.state {
+            let state = NetGameState::Error("Connecting...".to_string());
+            let state = Arc::new(RwLock::new(state));
+            let mut sender = net::run_guest(address, state.clone(), self.player_id);
+            let player = Player::new("Guesty McGuestface".into(), random(), self.player_id);
+            NetGameState::join_lobby(&mut sender, player);
+            let conn_state = ConnectedState {
+                sender,
+                state,
+            };
+            self.state = GameState::InGame(conn_state);
+        }
+    }
+
+    fn randomize_color(&mut self) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let ref mut sender = conn_state.sender;
+            let ref mut state = conn_state.state;
+            let mut state = state.write().expect("Failed to lock state");
+            let is_host = state.is_host(&self.player_id);
+            if let NetGameState::Lobby(ref mut info) = *state {
+                let mut player = info.player(&self.player_id).clone();
+                player.color = random();
+                if is_host {
+                    info.host = player;
+                    drop(state);
+                    self.broadcast_state();
+                } else {
+                    let message = Message::EditPlayer(self.player_id, player);
+                    sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+                }
+            }
+        }
+    }
+
+    fn set_own_name(&mut self, new_name: &String) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let ref mut sender = conn_state.sender;
+            let ref mut state = conn_state.state;
+            let mut state = state.write().expect("Failed to lock state");
+            let is_host = state.is_host(&self.player_id);
+            if let NetGameState::Lobby(ref mut info) = *state {
+                let mut player = info.player(&self.player_id).clone();
+                player.name = new_name.clone();
+                if is_host {
+                    info.host = player;
+                } else {
+                    let message = Message::EditPlayer(self.player_id, player);
+                    sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+                }
+            }
+        }
+    }
+
+    fn start_hosted_game(&mut self) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let ref mut state = conn_state.state;
+            let mut state = state.write().expect("Failed to lock state");
+            let is_host = state.is_host(&self.player_id);
+            if let NetGameState::Lobby(ref mut info) = *state {
+                if is_host {
+                    let players = info.players();
+                    let board_controller = BoardController::new(7, 7, players, info.host.id);
+                    let net_state = NetGameState::Active(board_controller);
+                    *state = net_state;
+                    drop(state);
+                    self.broadcast_state();
+                }
+            }
+        }
+    }
+
+    fn main_menu(&mut self) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let ref mut sender = conn_state.sender;
+            sender.try_send(MessageCtrl::Disconnect).map_err(|e| println!("{:?}", e)).unwrap_or(());
+            println!("Attempted to disconnect");
+        }
+        self.state = GameState::MainMenu;
+    }
+
     /// Handles events
     pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E) {
-        use piston::input::{Button, MouseButton};
+        use piston::input::{Button};
 
         // This is silly.
         if let Some(_) = e.render_args() {
@@ -186,103 +193,30 @@ impl GameController {
                 use piston::input::ButtonState;
                 self.shift = state.state == ButtonState::Press;
             }
+            if state.button == Button::Keyboard(Key::LCtrl) || state.button == Button::Keyboard(Key::RCtrl) {
+                use piston::input::ButtonState;
+                self.ctrl = state.state == ButtonState::Press;
+            }
         }
 
         match self.state {
-            GameState::MainMenu => {
-                if let Some(Button::Mouse(button)) = e.press_args() {
-                    match button {
-                        MouseButton::Left => {
-                            let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
-                            let state = Arc::new(RwLock::new(state));
-                            let sender = net::run_host(12543, state.clone(), self.player_id);
-                            let conn_state = ConnectedState {
-                                state,
-                                sender,
-                            };
-                            self.state = GameState::InGame(conn_state);
-                        }
-                        MouseButton::Right => {
-                            self.state = GameState::ConnectMenu("127.0.0.1:12543".into());
-                        }
-                        _ => (),
+            GameState::MainMenu => {}
+            GameState::ConnectMenu(ref mut address) => {
+                // shout out to conrod for not supporting Ctrl-V in text boxes, what the fuck
+                if let Some(Button::Keyboard(Key::V)) = e.press_args() {
+                    if self.ctrl {
+                        let mut ctx: ClipboardContext = ClipboardProvider::new().expect("Failed to paste");
+                        *address = ctx.get_contents().expect("Failed to paste");
                     }
                 }
             }
-            GameState::ConnectMenu(ref mut address) => {
-                if let Some(Button::Keyboard(key)) = e.press_args() {
-                    apply_key(address, &key, self.shift);
-                }
-                if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                    let address = address.parse().expect("Invalid address!");
-                    let state = NetGameState::Error("Connecting...".to_string());
-                    let state = Arc::new(RwLock::new(state));
-                    let mut sender = net::run_guest(address, state.clone(), self.player_id);
-                    let mut rng = thread_rng();
-                    let r = rng.gen_range(0.0, 1.0);
-                    let g = rng.gen_range(0.0, 1.0);
-                    let b = rng.gen_range(0.0, 1.0);
-                    let player = Player::new("Guesty McGuestface".into(), [r, g, b, 1.0], self.player_id);
-                    NetGameState::join_lobby(&mut sender, player);
-                    let conn_state = ConnectedState {
-                        sender,
-                        state,
-                    };
-                    self.state = GameState::InGame(conn_state);
-                } else if let Some(Button::Mouse(MouseButton::Right)) = e.press_args() {
-                    let mut ctx: ClipboardContext = ClipboardProvider::new().expect("Failed to paste");
-                    *address = ctx.get_contents().expect("Failed to paste");
-                }
-            }
             GameState::InGame(ref mut conn_state) => {
-                let ref mut sender = conn_state.sender;
                 let ref mut state = conn_state.state;
                 let (broadcast, new_state, new_net_state) = {
                     let mut state = state.write().expect("Failed to lock state");
-                    let is_host = state.is_host(&self.player_id);
                     match *state {
-                        NetGameState::Lobby(ref mut info) => {
-                            // TODO remember name and color
-                            if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                                let mut player = info.player(&self.player_id).clone();
-                                let mut rng = thread_rng();
-                                let r = rng.gen_range(0.0, 1.0);
-                                let g = rng.gen_range(0.0, 1.0);
-                                let b = rng.gen_range(0.0, 1.0);
-                                player.color = [r, g, b, 1.0];
-                                if is_host {
-                                    info.host = player;
-                                    (true, None, None)
-                                } else {
-                                    let message = Message::EditPlayer(self.player_id, player);
-                                    sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
-                                    (false, None, None)
-                                }
-                            } else if let Some(Button::Mouse(MouseButton::Right)) = e.press_args() {
-                                if is_host {
-                                    let players = info.players();
-                                    let board_controller = BoardController::new(7, 7, players, info.host.id);
-                                    let net_state = NetGameState::Active(board_controller);
-                                    (true, None, Some(net_state))
-                                } else {
-                                    (false, None, None)
-                                }
-                            } else if let Some(Button::Keyboard(ref key)) = e.press_args() {
-                                let mut player = info.player(&self.player_id).clone();
-                                let old_name = player.name.clone();
-                                apply_key(&mut player.name, key, self.shift);
-                                if player.name != old_name {
-                                    if is_host {
-                                        info.host = player;
-                                    } else {
-                                        let message = Message::EditPlayer(self.player_id, player);
-                                        sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
-                                    }
-                                }
-                                (false, None, None)
-                            } else {
-                                (false, None, None)
-                            }
+                        NetGameState::Lobby(_) => {
+                            (false, None, None)
                         }
                         NetGameState::Active(ref mut board_controller) => {
                             let state_dirty = board_controller.event(&view.board_view, e, &self.player_id);
@@ -301,20 +235,10 @@ impl GameController {
                             }
                         }
                         NetGameState::GameOver(_) => {
-                            if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                                sender.try_send(MessageCtrl::Disconnect).map_err(|_| ()).expect("Failed to send message");
-                                (false, Some(GameState::MainMenu), None)
-                            } else {
-                                (false, None, None)
-                            }
+                            (false, None, None)
                         }
                         NetGameState::Error(_) => {
-                            if let Some(Button::Mouse(MouseButton::Left)) = e.press_args() {
-                                sender.try_send(MessageCtrl::Disconnect).map_err(|_| ()).unwrap_or(());
-                                (false, Some(GameState::MainMenu), None)
-                            } else {
-                                (false, None, None)
-                            }
+                            (false, None, None)
                         }
                     }
                 };
@@ -332,7 +256,6 @@ impl GameController {
         }
     }
 
-    // TODO maybe don't do this
     fn broadcast_state(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
             let ref mut sender = conn_state.sender;
@@ -340,6 +263,236 @@ impl GameController {
             let state = state.read().expect("Failed to lock state");
             let message = Message::State(state.clone());
             sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+        }
+    }
+
+    /// Run Conrod GUI
+    pub fn gui(&mut self, ui: &mut conrod_core::UiCell, ids: &Ids) {
+        use conrod_core::{widget, Colorable, Labelable, Positionable, Sizeable, Widget};
+
+        const MARGIN: conrod_core::Scalar = 30.0;
+        const TITLE_SIZE: conrod_core::FontSize = 42;
+        const SUBTITLE_SIZE: conrod_core::FontSize = 32;
+        const BUTTON_DIMENSIONS: conrod_core::Dimensions = [200.0, 60.0];
+
+        widget::Canvas::new().pad(MARGIN).set(ids.canvas, ui);
+
+        let mut deferred_actions: Vec<Box<dyn Fn(&mut Self)>> = vec![];
+
+        macro_rules! defer {
+            (self.$e:ident($( $a:expr ),*)) => {
+                deferred_actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)))
+            }
+        }
+
+        match self.state {
+            GameState::MainMenu => {
+                widget::Text::new("DynaMaze")
+                    .color(colors::DARK.into())
+                    .font_size(TITLE_SIZE)
+                    .mid_top_of(ids.canvas)
+                    .set(ids.menu_header, ui);
+
+                let host_button = widget::Button::new()
+                    .label("Host Game")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .align_middle_x_of(ids.canvas)
+                    .align_middle_y_of(ids.canvas)
+                    .set(ids.host_button, ui);
+                for _host in host_button {
+                    self.host();
+                }
+
+                let connect_button = widget::Button::new()
+                    .label("Join Game")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .align_middle_x_of(ids.canvas)
+                    .down_from(ids.host_button, MARGIN)
+                    .set(ids.connect_button, ui);
+                for _connect in connect_button {
+                    self.connect();
+                }
+            },
+            GameState::ConnectMenu(ref mut connect_addr) => {
+                widget::Text::new("Connect to Game")
+                    .color(colors::DARK.into())
+                    .font_size(SUBTITLE_SIZE)
+                    .mid_top_of(ids.canvas)
+                    .set(ids.menu_header, ui);
+
+                let main_menu_button = widget::Button::new()
+                    .label("Main Menu")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .top_left_of(ids.canvas)
+                    .set(ids.main_menu_button, ui);
+                for _press in main_menu_button {
+                    defer!(self.main_menu());
+                }
+
+                let text = widget::TextBox::new(connect_addr)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .text_color(colors::PURPLE.into())
+                    .align_middle_x_of(ids.canvas)
+                    .align_middle_y_of(ids.canvas)
+                    .set(ids.ip_box, ui);
+                for evt in text {
+                    match evt {
+                        widget::text_box::Event::Update(new_text) => {
+                            self.state = GameState::ConnectMenu(new_text);
+                        }
+                        widget::text_box::Event::Enter => {
+                            self.do_connect();
+                        }
+                    }
+                }
+
+                let connect_button = widget::Button::new()
+                    .label("Connect")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .align_middle_x_of(ids.canvas)
+                    .down_from(ids.ip_box, MARGIN)
+                    .set(ids.connect_button, ui);
+                for _press in connect_button {
+                    self.do_connect();
+                }
+            }
+            GameState::InGame(ref conn_state) => {
+                let ref state = conn_state.state;
+                let state = state.read().expect("Failed to lock state");
+                let is_host = state.is_host(&self.player_id);
+                match *state {
+                    NetGameState::Lobby(ref info) => {
+                        let status = if is_host {
+                            "Hosting lobby"
+                        } else {
+                            "Connected to lobby"
+                        };
+                        widget::Text::new(status)
+                            .color(colors::DARK.into())
+                            .font_size(SUBTITLE_SIZE)
+                            .mid_top_of(ids.canvas)
+                            .set(ids.menu_header, ui);
+
+                        let main_menu_button = widget::Button::new()
+                            .label("Main Menu")
+                            .wh(BUTTON_DIMENSIONS)
+                            .color(conrod_core::color::WHITE.with_alpha(0.4))
+                            .label_color(colors::DARK.into())
+                            .top_left_of(ids.canvas)
+                            .set(ids.main_menu_button, ui);
+                        for _press in main_menu_button {
+                            defer!(self.main_menu());
+                        }
+
+                        let me = info.player(&self.player_id);
+
+                        let name_box = widget::TextBox::new(&me.name)
+                            .color(conrod_core::color::WHITE.with_alpha(0.4))
+                            .text_color(colors::PURPLE.into())
+                            .w(BUTTON_DIMENSIONS[0])
+                            .align_right_of(ids.canvas)
+                            .down_from(ids.menu_header, MARGIN)
+                            .set(ids.name_box, ui);
+                        for evt in name_box {
+                            match evt {
+                                widget::text_box::Event::Update(new_text) => {
+                                    let text = new_text.clone();
+                                    defer!(self.set_own_name(&text));
+                                }
+                                widget::text_box::Event::Enter => {}
+                            }
+                        }
+
+                        widget::Circle::fill(MARGIN / 2.0)
+                            .color(me.color.into())
+                            .align_middle_y_of(ids.name_box)
+                            .left_from(ids.name_box, MARGIN)
+                            .set(ids.color_demo, ui);
+
+                        let color_button = widget::Button::new()
+                            .label("Randomize Color")
+                            .color(conrod_core::color::WHITE.with_alpha(0.4))
+                            .label_color(colors::DARK.into())
+                            .wh(BUTTON_DIMENSIONS)
+                            .align_right_of(ids.name_box)
+                            .down_from(ids.name_box, MARGIN)
+                            .set(ids.color_button, ui);
+                        for _press in color_button {
+                            defer!(self.randomize_color());
+                        }
+
+                        if is_host {
+                            let start_button = widget::Button::new()
+                                .label("Begin Game")
+                                .color(conrod_core::color::WHITE.with_alpha(0.4))
+                                .label_color(colors::DARK.into())
+                                .wh(BUTTON_DIMENSIONS)
+                                .mid_bottom_with_margin_on(ids.canvas, MARGIN)
+                                .set(ids.start_button, ui);
+                            for _press in start_button {
+                                defer!(self.start_hosted_game());
+                            }
+                        }
+                    }
+                    NetGameState::Active(_) => {}
+                    NetGameState::GameOver(ref info) => {
+                        let text = format!("{} wins!", info.winner.name);
+                        widget::Text::new(&text)
+                            .color(colors::DARK.into())
+                            .font_size(SUBTITLE_SIZE)
+                            .mid_top_of(ids.canvas)
+                            .set(ids.menu_header, ui);
+
+                        // TODO just throw this in at the end for everything
+                        let main_menu_button = widget::Button::new()
+                            .label("Main Menu")
+                            .wh(BUTTON_DIMENSIONS)
+                            .color(conrod_core::color::WHITE.with_alpha(0.4))
+                            .label_color(colors::DARK.into())
+                            .top_left_of(ids.canvas)
+                            .set(ids.main_menu_button, ui);
+                        for _press in main_menu_button {
+                            defer!(self.main_menu());
+                        }
+                    }
+                    NetGameState::Error(ref text) => {
+                        widget::Text::new("Error")
+                            .color(colors::DARK.into())
+                            .font_size(SUBTITLE_SIZE)
+                            .mid_top_of(ids.canvas)
+                            .set(ids.menu_header, ui);
+
+                        widget::Text::new(text)
+                            .color(colors::DARK.into())
+                            .align_middle_x_of(ids.menu_header)
+                            .down_from(ids.menu_header, MARGIN)
+                            .set(ids.error_text, ui);
+
+                        let main_menu_button = widget::Button::new()
+                            .label("Main Menu")
+                            .wh(BUTTON_DIMENSIONS)
+                            .color(conrod_core::color::WHITE.with_alpha(0.4))
+                            .label_color(colors::DARK.into())
+                            .top_left_of(ids.canvas)
+                            .set(ids.main_menu_button, ui);
+                        for _press in main_menu_button {
+                            defer!(self.main_menu());
+                        }
+                    }
+                }
+            }
+        }
+
+        for action in deferred_actions {
+            action(self);
         }
     }
 }
