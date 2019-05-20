@@ -52,6 +52,12 @@ pub struct Board {
     pub player_tokens: BTreeMap<PlayerID, PlayerToken>,
 }
 
+fn avoid_path(tile: &mut Tile, target: Direction) {
+    while tile.paths().contains(&target) {
+        *tile = random();
+    }
+}
+
 impl Board {
     /// Creates a new board
     pub fn new(width: usize, height: usize, players: &BTreeMap<PlayerID, Player>) -> Board {
@@ -69,6 +75,20 @@ impl Board {
         cells[0][width - 1] = Tile { shape: Shape::L, orientation: Direction::South, item: None };
         cells[height - 1][0] = Tile { shape: Shape::L, orientation: Direction::North, item: None };
         cells[height - 1][width - 1] = Tile { shape: Shape::L, orientation: Direction::West, item: None };
+        // ensure top/bottom fixed tiles point inwards
+        for i in 0..width {
+            if i % 2 == 0 {
+                avoid_path(&mut cells[0][i], Direction::North);
+                avoid_path(&mut cells[height - 1][i], Direction::South);
+            }
+        }
+        // ensure left/right fixed tiles point inwards
+        for i in 0..height {
+            if i % 2 == 0 {
+                avoid_path(&mut cells[i][0], Direction::West);
+                avoid_path(&mut cells[i][width - 1], Direction::East);
+            }
+        }
         // place items
         let mut loose_tile: Tile = random();
         for item in &crate::item::ITEM_LIST {
