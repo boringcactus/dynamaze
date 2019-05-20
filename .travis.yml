@@ -23,4 +23,5 @@ deploy:
     rust: stable
 matrix:
   allow_failures:
+    - rust: beta
     - rust: nightly
