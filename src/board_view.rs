@@ -27,6 +27,7 @@ impl Extents {
 impl ops::Sub<f64> for Extents {
     type Output = Extents;
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn sub(self, rhs: f64) -> Extents {
         Extents {
             north: self.north + rhs,
@@ -173,7 +174,7 @@ impl BoardView {
 
     /// Gets the size of an individual tile and the x and y padding values
     fn tile_padding(&self, controller: &BoardController) -> (f64, f64, f64) {
-        let ref settings = self.settings;
+        let settings = &self.settings;
         let cell_max_height = (settings.height - settings.ui_margin_south) / (controller.board.height() as f64 + 2.0);
         let cell_max_width = (settings.width - settings.ui_margin_east) / (controller.board.width() as f64 + 2.0);
         if cell_max_height < cell_max_width {
@@ -187,7 +188,7 @@ impl BoardView {
 
     /// Gets the extents of the game and board
     fn game_extents(&self, controller: &BoardController) -> (Extents, Extents) {
-        let ref settings = self.settings;
+        let settings = &self.settings;
         let (cell_size, x_padding, y_padding) = self.tile_padding(controller);
         let game = Extents {
             west: settings.position[0] + x_padding,
@@ -201,7 +202,7 @@ impl BoardView {
 
     /// Gets the extents of the south and east UI panels
     fn ui_extents(&self) -> (Extents, Extents) {
-        let ref settings = self.settings;
+        let settings = &self.settings;
         let global = Extents {
             north: settings.position[1],
             south: settings.position[1] + settings.height,
@@ -225,7 +226,7 @@ impl BoardView {
 
     /// Draw board
     pub fn draw<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: &PlayerID,
+        &self, controller: &BoardController, local_id: PlayerID,
         glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Line, Rectangle};
@@ -233,7 +234,7 @@ impl BoardView {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
 
-        let ref settings = self.settings;
+        let settings = &self.settings;
         let (cell_size, _, _) = self.tile_padding(controller);
 
         // draw board
@@ -311,7 +312,7 @@ impl BoardView {
     }
 
     fn draw_tiles<G: Graphics, C>(
-        &self, mode: DrawMode, controller: &BoardController, local_id: &PlayerID,
+        &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         let board_tile_width = controller.board.width();
@@ -333,17 +334,18 @@ impl BoardView {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_tile<G: Graphics, C>(
-        &self, mode: DrawMode, tile: &Tile, outer: &Extents, background_color: Color, local_id: &PlayerID,
+        &self, mode: DrawMode, tile: &Tile, outer: &Extents, background_color: Color, local_id: PlayerID,
         controller: &BoardController, glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Rectangle, Image, Transformed};
 
-        if mode == DrawMode::OnlySelf && tile.item != Some(controller.board.player_tokens[local_id].next_target().clone()) {
+        if mode == DrawMode::OnlySelf && tile.item != Some(controller.board.player_tokens[&local_id].next_target().clone()) {
             return;
         }
 
-        let ref settings = self.settings;
+        let settings = &self.settings;
 
         let (cell_size, _, _) = self.tile_padding(controller);
         let wall_width = cell_size * settings.wall_width;
@@ -449,12 +451,12 @@ impl BoardView {
     }
 
     fn draw_insert_guides<G: Graphics, C>(
-        &self, controller: &BoardController, _local_id: &PlayerID,
+        &self, controller: &BoardController, _local_id: PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Polygon;
 
-        let ref settings = self.settings;
+        let settings = &self.settings;
 
         let (cell_size, _, _) = self.tile_padding(controller);
         let wall_width = cell_size * settings.wall_width;
@@ -513,17 +515,17 @@ impl BoardView {
     }
 
     fn draw_player_tokens<G: Graphics, C>(
-        &self, mode: DrawMode, controller: &BoardController, local_id: &PlayerID,
+        &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Ellipse;
 
-        let ref settings = self.settings;
+        let settings = &self.settings;
 
         let (cell_size, _, _) = self.tile_padding(controller);
         let wall_width = cell_size * settings.wall_width;
 
-        for (_, token) in &controller.board.player_tokens {
+        for token in controller.board.player_tokens.values() {
             let (row, col) = token.position;
             let player = match controller.players.get(&token.player_id) {
                 Some(x) => x,
@@ -532,11 +534,11 @@ impl BoardView {
             let tile = self.tile_extents(controller, row, col);
             let token_rect = tile - wall_width;
 
-            let should = mode == DrawMode::All || token.player_id == *local_id;
+            let should = mode == DrawMode::All || token.player_id == local_id;
             if should {
                 let token_ellipse = Ellipse::new(player.color.into());
                 token_ellipse.draw(token_rect.clone(), &c.draw_state, c.transform, g);
-                if token.player_id == *local_id {
+                if token.player_id == local_id {
                     let token_core = Ellipse::new([0.0, 0.0, 0.0, 1.0]);
                     token_core.draw(token_rect - wall_width / 2.0, &c.draw_state, c.transform, g);
                 }
@@ -545,7 +547,7 @@ impl BoardView {
     }
 
     fn draw_ui<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: &PlayerID,
+        &self, controller: &BoardController, local_id: PlayerID,
         glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Transformed;
@@ -559,12 +561,9 @@ impl BoardView {
         {
             let (cell_size, _, _) = self.tile_padding(controller);
             let (south_panel, _) = self.ui_extents();
-            let target_item = controller.board.player_tokens[local_id].next_target();
-            let my_turn = *local_id == *controller.active_player_id();
-            let turn_status = match my_turn {
-                true => "is",
-                false => "is not",
-            };
+            let target_item = controller.board.player_tokens[&local_id].next_target();
+            let my_turn = local_id == controller.active_player_id();
+            let turn_status = if my_turn { "is" } else { "is not" };
             let text = format!("Your target is {} and it {} your turn", target_item.char(), turn_status);
             let west = south_panel.west + cell_size * 1.5;
             let north = south_panel.north + 20.0;
@@ -588,8 +587,8 @@ impl BoardView {
             let west = east_panel.west;
             let mut north = east_panel.north + 20.0;
             for player_id in &controller.turn_order {
-                let ref player = controller.players[player_id];
-                let ref token = controller.board.player_tokens[player_id];
+                let player = &controller.players[player_id];
+                let token = &controller.board.player_tokens[player_id];
 
                 let transform = c.transform.trans(west, north);
                 graphics::text(self.settings.text_color, 15, &player.name, glyphs, transform, g).ok().expect("Failed to draw text");

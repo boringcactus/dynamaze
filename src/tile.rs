@@ -23,12 +23,12 @@ pub enum Direction {
 
 impl Direction {
     /// Gets the radian rotation of this direction
-    pub fn rad(&self) -> f64 {
+    pub fn rad(self) -> f64 {
         match self {
-            &Direction::North => 0.0,
-            &Direction::East => consts::PI / 2.0,
-            &Direction::South => consts::PI,
-            &Direction::West => consts::PI * 3.0 / 2.0,
+            Direction::North => 0.0,
+            Direction::East => consts::PI / 2.0,
+            Direction::South => consts::PI,
+            Direction::West => consts::PI * 3.0 / 2.0,
         }
     }
 }
@@ -36,6 +36,7 @@ impl Direction {
 impl ops::Add<Direction> for (usize, usize) {
     type Output = (usize, usize);
 
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn add(self, rhs: Direction) -> (usize, usize) {
         let (j, i) = self;
         match rhs {
@@ -95,17 +96,17 @@ pub enum Shape {
 
 impl Shape {
     fn paths(&self) -> Vec<Direction> {
-        match self {
-            &Shape::L => vec![Direction::North, Direction::East],
-            &Shape::I => vec![Direction::North, Direction::South],
-            &Shape::T => vec![Direction::North, Direction::East, Direction::South],
+        match *self {
+            Shape::L => vec![Direction::North, Direction::East],
+            Shape::I => vec![Direction::North, Direction::South],
+            Shape::T => vec![Direction::North, Direction::East, Direction::South],
         }
     }
     fn walls(&self) -> Vec<Direction> {
-        match self {
-            &Shape::L => vec![Direction::South, Direction::West],
-            &Shape::I => vec![Direction::East, Direction::West],
-            &Shape::T => vec![Direction::West],
+        match *self {
+            Shape::L => vec![Direction::South, Direction::West],
+            Shape::I => vec![Direction::East, Direction::West],
+            Shape::T => vec![Direction::West],
         }
     }
 }

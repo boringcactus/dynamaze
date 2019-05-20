@@ -50,16 +50,16 @@ impl BoardController {
     }
 
     /// Gets the ID of the player whose turn it is
-    pub fn active_player_id(&self) -> &PlayerID {
-        &self.turn_order[0]
+    pub fn active_player_id(&self) -> PlayerID {
+        self.turn_order[0]
     }
 
     /// Handles events, returns whether or not the state may have changed
-    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: &PlayerID) -> bool {
+    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID) -> bool {
         use piston::input::{Button, MouseButton};
 
         // never do anything if this player is not the active player
-        if *local_id != *self.active_player_id() {
+        if local_id != self.active_player_id() {
             return false;
         }
 
@@ -104,12 +104,12 @@ impl BoardController {
                     // if that tile is reachable from the active player's position...
                     if self.board.reachable_coords(self.board.player_pos(self.active_player_id())).contains(&pos) {
                         // move the active player to the given position
-                        let id = *self.active_player_id();
-                        self.board.move_player(&id, pos);
+                        let id = self.active_player_id();
+                        self.board.move_player(id, pos);
                         // if the player has reached their target...
                         if Some(self.board.player_tokens[&id].next_target()) == self.board.get([pos.1, pos.0]).item.as_ref() {
                             // advance the player to the next target
-                            self.board.player_reached_target(&id);
+                            self.board.player_reached_target(id);
                         }
                         // advance turn order
                         self.turn_state = TurnState::InsertTile;

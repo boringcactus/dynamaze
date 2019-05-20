@@ -30,7 +30,7 @@ impl GameView {
             GameState::MainMenu => {}
             GameState::ConnectMenu(_) => {}
             GameState::InGame(ref conn_state) => {
-                let ref state = conn_state.state;
+                let state = &conn_state.state;
                 let state = state.read().expect("Failed to acquire state mutex");
                 match *state {
                     NetGameState::Lobby(ref info) => {
@@ -48,7 +48,7 @@ impl GameView {
                         }
                     }
                     NetGameState::Active(ref board_controller) => {
-                        self.board_view.draw(board_controller, &controller.player_id, glyphs, c, g);
+                        self.board_view.draw(board_controller, controller.player_id, glyphs, c, g);
                     }
                     NetGameState::GameOver(_) => {}
                     NetGameState::Error(_) => {}

@@ -83,6 +83,7 @@ impl Board {
             }
         }
         // ensure left/right fixed tiles point inwards
+        #[allow(clippy::needless_range_loop)]
         for i in 0..height {
             if i % 2 == 0 {
                 avoid_path(&mut cells[i][0], Direction::West);
@@ -124,8 +125,7 @@ impl Board {
             let remaining_items = legal_items.split_off(player_item_count);
             let player_items = mem::replace(&mut legal_items, remaining_items);
             println!("Gave player {:?} targets {:?}", player.id, player_items);
-            let result = (player.id, PlayerToken::new(player, position, player_items));
-            result
+            (player.id, PlayerToken::new(player, position, player_items))
         }).collect();
         Board {
             cells,
@@ -211,13 +211,13 @@ impl Board {
     }
 
     /// Gets the (row, col) position of the given player
-    pub fn player_pos(&self, id: &PlayerID) -> (usize, usize) {
-        self.player_tokens.get(id).expect("No token for player with given ID").position
+    pub fn player_pos(&self, id: PlayerID) -> (usize, usize) {
+        self.player_tokens.get(&id).expect("No token for player with given ID").position
     }
 
     /// Moves the given player to the given (row, col)
-    pub fn move_player(&mut self, id: &PlayerID, pos: (usize, usize)) {
-        self.player_tokens.get_mut(id).expect("No token for player with given ID").position = pos;
+    pub fn move_player(&mut self, id: PlayerID, pos: (usize, usize)) {
+        self.player_tokens.get_mut(&id).expect("No token for player with given ID").position = pos;
     }
 
     /// Gets all the coordinates reachable from the given (row, col)
@@ -250,9 +250,9 @@ impl Board {
     }
 
     /// Indicates that the given player has reached their target
-    pub fn player_reached_target(&mut self, player_id: &PlayerID) {
+    pub fn player_reached_target(&mut self, player_id: PlayerID) {
         self.player_tokens = self.player_tokens.iter().map(|(id, token)| {
-            if *player_id != *id {
+            if player_id != *id {
                 return (*id, token.clone());
             }
             let targets = token.targets.clone().split_first().expect("Reached target but no targets left").1.to_vec();

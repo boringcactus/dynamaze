@@ -75,13 +75,13 @@ fn main() {
     let mut gl = GlGraphics::new(opengl);
 
     let mut game_controller = GameController::new();
-    let mut game_view = GameView::new([window_size[0] as f64, window_size[1] as f64]);
+    let mut game_view = GameView::new([window_size[0].into(), window_size[1].into()]);
 
     let texture_settings = TextureSettings::new().filter(Filter::Nearest);
-    let ref mut glyphs = GlyphCache::new("assets/FiraSans-Regular.ttf", (), texture_settings)
+    let mut glyphs = GlyphCache::new("assets/FiraSans-Regular.ttf", (), texture_settings)
         .expect("Could not load font");
 
-    let mut ui = conrod_core::UiBuilder::new([window_size[0] as f64, window_size[1] as f64])
+    let mut ui = conrod_core::UiBuilder::new([window_size[0].into(), window_size[1].into()])
         .theme(game_view.theme())
         .build();
     ui.fonts.insert_from_file("assets/FiraSans-Regular.ttf").unwrap();
@@ -123,10 +123,10 @@ fn main() {
 
         if let Some(args) = e.render_args() {
             let viewport = args.viewport();
-            game_view.board_view.settings.width = viewport.draw_size[0] as f64;
-            game_view.board_view.settings.height = viewport.draw_size[1] as f64;
-            ui.win_w = viewport.draw_size[0] as f64;
-            ui.win_h = viewport.draw_size[1] as f64;
+            game_view.board_view.settings.width = viewport.draw_size[0].into();
+            game_view.board_view.settings.height = viewport.draw_size[1].into();
+            ui.win_w = viewport.draw_size[0].into();
+            ui.win_h = viewport.draw_size[1].into();
             gl.draw(viewport, |c, g| {
                 use graphics::clear;
                 clear(colors::LIGHT.into(), g);
@@ -159,7 +159,7 @@ fn main() {
                                                 texture_from_image);
 
 
-                game_view.draw(&game_controller, glyphs, &c, g);
+                game_view.draw(&game_controller, &mut glyphs, &c, g);
             });
         }
     }

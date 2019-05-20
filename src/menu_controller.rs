@@ -114,10 +114,10 @@ impl GameController {
 
     fn randomize_color(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let ref mut sender = conn_state.sender;
-            let ref mut state = conn_state.state;
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(&self.player_id);
+            let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
                 let mut player = info.player(&self.player_id).clone();
                 player.color = random();
@@ -133,15 +133,15 @@ impl GameController {
         }
     }
 
-    fn set_own_name(&mut self, new_name: &String) {
+    fn set_own_name(&mut self, new_name: &str) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let ref mut sender = conn_state.sender;
-            let ref mut state = conn_state.state;
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(&self.player_id);
+            let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
                 let mut player = info.player(&self.player_id).clone();
-                player.name = new_name.clone();
+                player.name = new_name.to_string();
                 if is_host {
                     info.host = player;
                 } else {
@@ -154,9 +154,9 @@ impl GameController {
 
     fn start_hosted_game(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let ref mut state = conn_state.state;
+            let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(&self.player_id);
+            let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
                 if is_host {
                     let players = info.players();
@@ -172,7 +172,7 @@ impl GameController {
 
     fn main_menu(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let ref mut sender = conn_state.sender;
+            let sender = &mut conn_state.sender;
             sender.try_send(MessageCtrl::Disconnect).map_err(|e| println!("{:?}", e)).unwrap_or(());
             println!("Attempted to disconnect");
         }
@@ -185,8 +185,8 @@ impl GameController {
         use piston::input::{Button};
 
         // This is silly.
-        if let Some(_) = e.render_args() {
-            let old_last_player = self.last_player.clone();
+        if e.update_args().is_some() {
+            let old_last_player = self.last_player;
 
             let music = match self.state {
                 GameState::MainMenu | GameState::ConnectMenu(_) |
@@ -198,7 +198,7 @@ impl GameController {
                     let state = conn_state.state.read().unwrap();
                     match *state {
                         NetGameState::Active(ref board) => {
-                            self.last_player = Some(*board.active_player_id());
+                            self.last_player = Some(board.active_player_id());
                             sound::Music::InGame
                         },
                         _ => {
@@ -238,7 +238,7 @@ impl GameController {
                 }
             }
             GameState::InGame(ref mut conn_state) => {
-                let ref mut state = conn_state.state;
+                let state = &mut conn_state.state;
                 let (broadcast, new_state, new_net_state) = {
                     let mut state = state.write().expect("Failed to lock state");
                     match *state {
@@ -246,7 +246,7 @@ impl GameController {
                             (false, None, None)
                         }
                         NetGameState::Active(ref mut board_controller) => {
-                            let state_dirty = board_controller.event(&view.board_view, e, &self.player_id);
+                            let state_dirty = board_controller.event(&view.board_view, e, self.player_id);
                             if state_dirty {
                                 if let Some(winner) = board_controller.winner() {
                                     let info = GameOverInfo {
@@ -287,8 +287,8 @@ impl GameController {
 
     fn broadcast_state(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let ref mut sender = conn_state.sender;
-            let ref mut state = conn_state.state;
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
             let state = state.read().expect("Failed to lock state");
             let message = Message::State(state.clone());
             sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
@@ -310,6 +310,7 @@ impl GameController {
 
         macro_rules! defer {
             (self.$e:ident($( $a:expr ),*)) => {
+                #[allow(clippy::redundant_closure)]
                 deferred_actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)))
             }
         }
@@ -406,9 +407,9 @@ impl GameController {
                 }
             }
             GameState::InGame(ref conn_state) => {
-                let ref state = conn_state.state;
+                let state = &conn_state.state;
                 let state = state.read().expect("Failed to lock state");
-                let is_host = state.is_host(&self.player_id);
+                let is_host = state.is_host(self.player_id);
                 match *state {
                     NetGameState::Lobby(ref info) => {
                         let status = if is_host {
@@ -561,7 +562,7 @@ impl GameController {
                     .mid_top_of(ids.canvas)
                     .set(ids.menu_header, ui);
 
-                for new_audio in widget::Slider::new(curr_options.audio_level as f32, 0.0, 100.0)
+                if let Some(new_audio) = widget::Slider::new(f32::from(curr_options.audio_level), 0.0, 100.0)
                     .label("Audio Level")
                     .down_from(ids.menu_header, MARGIN)
                     .padded_w_of(ids.menu_header, -MARGIN)
@@ -598,5 +599,11 @@ impl GameController {
         for action in deferred_actions {
             action(self);
         }
+    }
+}
+
+impl Default for GameController {
+    fn default() -> Self {
+        Self::new()
     }
 }

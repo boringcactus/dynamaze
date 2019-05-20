@@ -78,14 +78,14 @@ pub enum NetGameState {
 
 impl NetGameState {
     /// Checks if a given player ID belongs to the host
-    pub fn is_host(&self, id: &PlayerID) -> bool {
+    pub fn is_host(&self, id: PlayerID) -> bool {
         let host_id = match self {
             NetGameState::Lobby(ref info) => info.host.id,
             NetGameState::Active(ref board_controller) => board_controller.host_id,
             NetGameState::GameOver(ref info) => info.host_id,
             NetGameState::Error(_) => 0,
         };
-        host_id == *id
+        host_id == id
     }
 }
 

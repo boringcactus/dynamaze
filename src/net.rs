@@ -150,7 +150,7 @@ impl<S> Sink for SinkPool<S> where S: Sink, <S as Sink>::SinkItem: Clone {
     fn poll_complete(&mut self) -> Result<Async<()>, Self::SinkError> {
         let mut sinks = self.sinks.lock().expect("Failed to lock sinks mutex");
         sinks.iter_mut()
-            .map(|sink| sink.poll_complete())
+            .map(Sink::poll_complete)
             .fold(Ok(Async::Ready(())), |a, b| {
                 match a {
                     Ok(Async::Ready(())) => b,
@@ -162,7 +162,7 @@ impl<S> Sink for SinkPool<S> where S: Sink, <S as Sink>::SinkItem: Clone {
     fn close(&mut self) -> Result<Async<()>, Self::SinkError> {
         let mut sinks = self.sinks.lock().expect("Failed to lock sinks mutex");
         sinks.iter_mut()
-            .map(|sink| sink.close())
+            .map(Sink::close)
             .fold(Ok(Async::Ready(())), |a, b| {
                 match a {
                     Ok(Async::Ready(())) => b,
@@ -211,7 +211,7 @@ impl Into<MessageCtrl> for Message {
 
 fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Option<MessageCtrl> {
     let mut state = state.write().expect("Failed to acquire state");
-    let is_host = state.is_host(&player_id);
+    let is_host = state.is_host(player_id);
     match message {
         Message::JoinLobby(player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
@@ -298,7 +298,7 @@ mod nat {
         [a[0] & b[0], a[1] & b[1], a[2] & b[2], a[3] & b[3]]
     }
 
-    fn netmask_equivalent(addr1: &Ipv4Addr, addr2: &Ipv4Addr, netmask: &Ipv4Addr) -> bool {
+    fn netmask_equivalent(addr1: Ipv4Addr, addr2: Ipv4Addr, netmask: Ipv4Addr) -> bool {
         let addr1 = addr1.octets();
         let addr2 = addr2.octets();
         let netmask = netmask.octets();
@@ -309,12 +309,12 @@ mod nat {
         for iface in get_if_addrs::get_if_addrs()? {
             let addr: IfAddr = iface.addr;
             if let IfAddr::V4(addr) = addr {
-                if netmask_equivalent(&addr.ip, gateway.addr.ip(), &addr.netmask) {
+                if netmask_equivalent(addr.ip, *gateway.addr.ip(), addr.netmask) {
                     return Ok(addr.ip)
                 }
             }
         }
-        return Err(NatError::NoneFound)
+        Err(NatError::NoneFound)
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -346,9 +346,8 @@ mod nat {
 
     impl ServerInfoHandle {
         pub fn get(&self) -> Result<ServerInfo, NatError> {
-            match *(self.info.read()?) {
-                Some(x) => return Ok(x),
-                None => {},
+            if let Some(x) = *(self.info.read()?) {
+                return Ok(x);
             }
             let result = fetch_info()?;
             let mut info = self.info.write()?;
@@ -399,7 +398,6 @@ pub fn run_host(state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Result
                     let socket = Framed::new(socket, MessageCodec {});
                     let (sink, stream) = socket.split();
                     {
-                        let addr = addr.clone();
                         let sink = sink.with_flat_map(move |data: MessageCtrl| {
                             if let MessageCtrl::Disconnect = data {
                                 println!("Got Disconnect");
@@ -416,7 +414,7 @@ pub fn run_host(state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Result
                     let err_state = state.clone();
 
                     let incoming = stream
-                        .filter_map(move |message| handle_incoming(message, addr.clone(), state.clone(), player_id))
+                        .filter_map(move |message| handle_incoming(message, addr, state.clone(), player_id))
                         .forward(send)
                         .map(|_| ())
                         .map_err(|err| handle_error(err, err_state));
@@ -454,9 +452,9 @@ pub fn run_host(state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Result
     Ok((format!("{}", conn_info.remote_addr), ui_thread_sender))
 }
 
-pub fn run_guest(host: &String, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
+pub fn run_guest(host: &str, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
     let (send, recv) = mpsc::channel(20);
-    let host = host.clone();
+    let host = host.to_string();
     let ui_thread_sender = send.clone();
     thread::spawn(move || {
         let err_state = state.clone();
@@ -479,7 +477,7 @@ pub fn run_guest(host: &String, state: Arc<RwLock<NetGameState>>, player_id: Pla
                 });
 
                 let incoming = stream
-                    .filter_map(move |message| handle_incoming(message, addr.clone(), state.clone(), player_id))
+                    .filter_map(move |message| handle_incoming(message, addr, state.clone(), player_id))
                     .forward(send)
                     .map(|_| ())
                     .map_err(|err| handle_error(err, err_state));
@@ -510,5 +508,5 @@ pub fn run_guest(host: &String, state: Arc<RwLock<NetGameState>>, player_id: Pla
             .map_err(move |err| handle_error(err, err_state));
         tokio::run(net_handler);
     });
-    return ui_thread_sender;
+    ui_thread_sender
 }

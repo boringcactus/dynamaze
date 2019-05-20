@@ -37,11 +37,9 @@ pub struct GameOptionsHandle {
 
 lazy_static! {
     static ref CONFIG_PATH: PathBuf = {
-        {
-            let mut config = env::current_exe().unwrap();
-            config.set_extension("toml");
-            config
-        }
+        let mut config = env::current_exe().unwrap();
+        config.set_extension("toml");
+        config
     };
 }
 
@@ -65,9 +63,7 @@ impl GameOptionsHandle {
     }
 
     pub fn save(&self, options: &GameOptions) {
-        {
-            *(self.options.write().unwrap()) = options.clone();
-        }
+        *(self.options.write().unwrap()) = options.clone();
         let _ = toml::to_string_pretty(options).suppress_error()
             .and_then(|data| fs::write(&*CONFIG_PATH, data).suppress_error());
     }
