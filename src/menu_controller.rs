@@ -60,12 +60,20 @@ impl GameController {
     fn host(&mut self) {
         let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
         let state = Arc::new(RwLock::new(state));
-        let sender = net::run_host(12543, state.clone(), self.player_id);
-        let conn_state = ConnectedState {
-            state,
-            sender,
-        };
-        self.state = GameState::InGame(conn_state);
+        match net::run_host(state.clone(), self.player_id) {
+            Ok((conn_str, sender)) => {
+                let conn_state = ConnectedState {
+                    state,
+                    sender,
+                    conn_str,
+                };
+                self.state = GameState::InGame(conn_state);
+            },
+            Err(e) => {
+                let e = format!("{}", e);
+                self.state = GameState::HardError(e);
+            }
+        }
     }
 
     fn connect(&mut self) {
@@ -82,6 +90,7 @@ impl GameController {
             let conn_state = ConnectedState {
                 sender,
                 state,
+                conn_str: address.clone(),
             };
             self.state = GameState::InGame(conn_state);
         }
@@ -163,7 +172,7 @@ impl GameController {
             let old_last_player = self.last_player.clone();
 
             let music = match self.state {
-                GameState::MainMenu | GameState::ConnectMenu(_) => {
+                GameState::MainMenu | GameState::ConnectMenu(_) | GameState::HardError(_) => {
                     self.last_player = None;
                     sound::Music::Menu
                 },
@@ -253,6 +262,7 @@ impl GameController {
                     self.broadcast_state();
                 }
             }
+            GameState::HardError(_) => {}
         }
     }
 
@@ -371,11 +381,11 @@ impl GameController {
                 match *state {
                     NetGameState::Lobby(ref info) => {
                         let status = if is_host {
-                            "Hosting lobby"
+                            format!("Hosting lobby: {}", conn_state.conn_str)
                         } else {
-                            "Connected to lobby"
+                            "Connected to lobby".to_owned()
                         };
-                        widget::Text::new(status)
+                        widget::Text::new(&status)
                             .color(colors::DARK.into())
                             .font_size(SUBTITLE_SIZE)
                             .mid_top_of(ids.canvas)
@@ -487,6 +497,30 @@ impl GameController {
                             defer!(self.main_menu());
                         }
                     }
+                }
+            }
+            GameState::HardError(ref text) => {
+                widget::Text::new("Error")
+                    .color(colors::DARK.into())
+                    .font_size(SUBTITLE_SIZE)
+                    .mid_top_of(ids.canvas)
+                    .set(ids.menu_header, ui);
+
+                widget::Text::new(text)
+                    .color(colors::DARK.into())
+                    .align_middle_x_of(ids.menu_header)
+                    .down_from(ids.menu_header, MARGIN)
+                    .set(ids.error_text, ui);
+
+                let main_menu_button = widget::Button::new()
+                    .label("Main Menu")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .top_left_of(ids.canvas)
+                    .set(ids.main_menu_button, ui);
+                for _press in main_menu_button {
+                    defer!(self.main_menu());
                 }
             }
         }

@@ -101,6 +101,8 @@ pub struct ConnectedState {
     pub sender: mpsc::Sender<MessageCtrl>,
     /// Game state
     pub state: Arc<RwLock<NetGameState>>,
+    /// Connection string (only shown on host)
+    pub conn_str: String,
 }
 
 pub enum GameState {
@@ -110,4 +112,6 @@ pub enum GameState {
     ConnectMenu(String),
     /// Connected, with given connection info and state
     InGame(ConnectedState),
+    /// Errored out in a serious way
+    HardError(String),
 }

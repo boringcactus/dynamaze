@@ -10,8 +10,10 @@ extern crate clipboard;
 extern crate conrod_core;
 extern crate conrod_piston;
 extern crate futures;
+extern crate get_if_addrs;
 extern crate glutin_window;
 extern crate graphics;
+extern crate igd;
 #[macro_use]
 extern crate lazy_static;
 extern crate opengl_graphics;

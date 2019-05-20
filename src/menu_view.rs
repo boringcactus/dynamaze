@@ -54,6 +54,7 @@ impl GameView {
                     NetGameState::Error(_) => {}
                 }
             }
+            GameState::HardError(_) => {}
         }
     }
 
