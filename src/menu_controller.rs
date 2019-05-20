@@ -47,7 +47,7 @@ impl GameController {
     /// Creates a new GameController
     pub fn new() -> GameController {
         let player_id = random();
-        sound::sound.play_music(sound::Music::Menu);
+        sound::SOUND.play_music(sound::Music::Menu);
         GameController {
             state: GameState::MainMenu,
             player_id,
@@ -190,10 +190,10 @@ impl GameController {
                     }
                 }
             };
-            sound::sound.play_music(music);
+            sound::SOUND.play_music(music);
 
             if old_last_player != self.last_player && self.last_player == Some(self.player_id) {
-                sound::sound.play_sound(sound::Sound::YourTurn);
+                sound::SOUND.play_sound(sound::Sound::YourTurn);
             }
         }
 

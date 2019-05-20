@@ -101,7 +101,7 @@ impl SoundEngine {
 }
 
 lazy_static! {
-    pub static ref sound: SoundEngine = {
+    pub static ref SOUND: SoundEngine = {
         SoundEngine::new()
     };
 }
