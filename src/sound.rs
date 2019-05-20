@@ -6,6 +6,8 @@ use std::time::Duration;
 
 use rodio::{self, *};
 
+use crate::options;
+
 const MUSIC_VOLUME: f32 = 0.6;
 const SOUND_VOLUME: f32 = 0.4;
 
@@ -85,8 +87,29 @@ impl SoundEngine {
             sink.append(source.repeat_infinite());
             sink
         });
+        sink.set_volume(MUSIC_VOLUME * (options::HANDLE.fetch().audio_level as f32) / 100.0);
         sink.play();
         *current_music = Some(music);
+    }
+
+    pub fn fetch_volume(&self) {
+        let current_music = self.current_music.lock().unwrap();
+        if let Some(music) = *current_music {
+            let mut music_sinks = self.music_sinks.lock().unwrap();
+            if let Some(sink) = music_sinks.get_mut(&music) {
+                sink.set_volume(MUSIC_VOLUME * (options::HANDLE.fetch().audio_level as f32) / 100.0);
+            }
+        }
+    }
+
+    pub fn poke_volume(&self, audio_level: u8) {
+        let current_music = self.current_music.lock().unwrap();
+        if let Some(music) = *current_music {
+            let mut music_sinks = self.music_sinks.lock().unwrap();
+            if let Some(sink) = music_sinks.get_mut(&music) {
+                sink.set_volume(MUSIC_VOLUME * (audio_level as f32) / 100.0);
+            }
+        }
     }
 
     pub fn play_sound(&self, snd: Sound) {
@@ -96,6 +119,7 @@ impl SoundEngine {
             sink.set_volume(SOUND_VOLUME);
             sink
         });
+        sink.set_volume(SOUND_VOLUME * (options::HANDLE.fetch().audio_level as f32) / 100.0);
         snd.play_on(sink);
     }
 }

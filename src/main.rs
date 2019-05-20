@@ -23,6 +23,7 @@ extern crate rodio;
 #[macro_use]
 extern crate serde_derive;
 extern crate tokio;
+extern crate toml;
 
 use glutin_window::GlutinWindow;
 use opengl_graphics::{Filter, GlGraphics, GlyphCache, OpenGL, Texture, TextureSettings};
@@ -48,6 +49,7 @@ mod menu;
 mod menu_controller;
 mod menu_view;
 mod net;
+mod options;
 mod player;
 mod sound;
 mod tile;

@@ -10,6 +10,7 @@ use crate::{BoardController, GameView, Player, PlayerID};
 use crate::colors;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
 use crate::net::{self, Message, MessageCtrl};
+use crate::options;
 use crate::sound;
 
 widget_ids! {
@@ -18,6 +19,7 @@ widget_ids! {
         menu_header,
         host_button,
         connect_button,
+        options_button,
         ip_box,
         lobby_name,
         color_button,
@@ -26,6 +28,8 @@ widget_ids! {
         color_demo,
         main_menu_button,
         error_text,
+        audio_slider,
+        save_button,
     }
 }
 
@@ -80,6 +84,10 @@ impl GameController {
         self.state = GameState::ConnectMenu("127.0.0.1:12543".into());
     }
 
+    fn enter_options(&mut self) {
+        self.state = GameState::Options(options::HANDLE.fetch().clone());
+    }
+
     fn do_connect(&mut self) {
         if let GameState::ConnectMenu(ref address) = self.state {
             let state = NetGameState::Error("Connecting...".to_string());
@@ -93,6 +101,14 @@ impl GameController {
                 conn_str: address.clone(),
             };
             self.state = GameState::InGame(conn_state);
+        }
+    }
+
+    fn save_options(&mut self) {
+        if let GameState::Options(ref opts) = self.state {
+            options::HANDLE.save(opts);
+            self.state = GameState::MainMenu;
+            sound::SOUND.fetch_volume();
         }
     }
 
@@ -160,6 +176,7 @@ impl GameController {
             sender.try_send(MessageCtrl::Disconnect).map_err(|e| println!("{:?}", e)).unwrap_or(());
             println!("Attempted to disconnect");
         }
+        sound::SOUND.fetch_volume();
         self.state = GameState::MainMenu;
     }
 
@@ -172,7 +189,8 @@ impl GameController {
             let old_last_player = self.last_player.clone();
 
             let music = match self.state {
-                GameState::MainMenu | GameState::ConnectMenu(_) | GameState::HardError(_) => {
+                GameState::MainMenu | GameState::ConnectMenu(_) |
+                GameState::HardError(_) | GameState::Options(_) => {
                     self.last_player = None;
                     sound::Music::Menu
                 },
@@ -263,6 +281,7 @@ impl GameController {
                 }
             }
             GameState::HardError(_) => {}
+            GameState::Options(_) => {}
         }
     }
 
@@ -325,6 +344,18 @@ impl GameController {
                     .set(ids.connect_button, ui);
                 for _connect in connect_button {
                     self.connect();
+                }
+
+                let options_button = widget::Button::new()
+                    .label("Options")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .align_middle_x_of(ids.canvas)
+                    .down_from(ids.connect_button, MARGIN)
+                    .set(ids.options_button, ui);
+                for _options in options_button {
+                    self.enter_options();
                 }
             },
             GameState::ConnectMenu(ref mut connect_addr) => {
@@ -511,6 +542,45 @@ impl GameController {
                     .align_middle_x_of(ids.menu_header)
                     .down_from(ids.menu_header, MARGIN)
                     .set(ids.error_text, ui);
+
+                let main_menu_button = widget::Button::new()
+                    .label("Main Menu")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .top_left_of(ids.canvas)
+                    .set(ids.main_menu_button, ui);
+                for _press in main_menu_button {
+                    defer!(self.main_menu());
+                }
+            }
+            GameState::Options(ref mut curr_options) => {
+                widget::Text::new("Options")
+                    .color(colors::DARK.into())
+                    .font_size(TITLE_SIZE)
+                    .mid_top_of(ids.canvas)
+                    .set(ids.menu_header, ui);
+
+                for new_audio in widget::Slider::new(curr_options.audio_level as f32, 0.0, 100.0)
+                    .label("Audio Level")
+                    .down_from(ids.menu_header, MARGIN)
+                    .padded_w_of(ids.menu_header, -MARGIN)
+                    .align_middle_x_of(ids.menu_header)
+                    .set(ids.audio_slider, ui) {
+                    curr_options.audio_level = new_audio as u8;
+                    sound::SOUND.poke_volume(curr_options.audio_level);
+                }
+
+                let save_button = widget::Button::new()
+                    .label("Save")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .mid_bottom_of(ids.canvas)
+                    .set(ids.save_button, ui);
+                for _press in save_button {
+                    defer!(self.save_options());
+                }
 
                 let main_menu_button = widget::Button::new()
                     .label("Main Menu")

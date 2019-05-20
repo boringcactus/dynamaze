@@ -55,6 +55,7 @@ impl GameView {
                 }
             }
             GameState::HardError(_) => {}
+            GameState::Options(_) => {}
         }
     }
 

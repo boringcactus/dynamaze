@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use crate::{BoardController, Player, PlayerID};
 use crate::colors::Color;
 use crate::net::{Message, MessageCtrl};
+use crate::options::GameOptions;
 
 /// Lobby information
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -114,4 +115,6 @@ pub enum GameState {
     InGame(ConnectedState),
     /// Errored out in a serious way
     HardError(String),
+    /// In options menu
+    Options(GameOptions),
 }
