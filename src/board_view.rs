@@ -151,6 +151,12 @@ impl BoardViewSettings {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum DrawMode {
+    All,
+    OnlySelf,
+}
+
 /// Stores visual information about a board
 pub struct BoardView {
     /// Stores board view settings
@@ -237,7 +243,7 @@ impl BoardView {
         let board_rect = [board.west, board.north, board_width, board_height];
 
         // draw the tiles
-        self.draw_tiles(controller, local_id, glyphs, c, g);
+        self.draw_tiles(DrawMode::All, controller, local_id, glyphs, c, g);
 
         // draw tile edges
         let cell_edge = Line::new(settings.cell_edge_color, settings.cell_edge_radius);
@@ -260,10 +266,12 @@ impl BoardView {
         self.draw_insert_guides(controller, local_id, glyphs, c, g);
 
         // draw player tokens
-        self.draw_player_tokens(controller, local_id, glyphs, c, g);
+        self.draw_player_tokens(DrawMode::All, controller, local_id, glyphs, c, g);
 
-        // TODO draw self on top of other players
-        // TODO draw own target item on top of players
+        // draw own token on top of others
+        self.draw_player_tokens(DrawMode::OnlySelf, controller, local_id, glyphs, c, g);
+        // draw own target on top of everything
+        self.draw_tiles(DrawMode::OnlySelf, controller, local_id, glyphs, c, g);
 
         // draw UI
         self.draw_ui(controller, local_id, glyphs, c, g);
@@ -303,7 +311,7 @@ impl BoardView {
     }
 
     fn draw_tiles<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: &PlayerID,
+        &self, mode: DrawMode, controller: &BoardController, local_id: &PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         let board_tile_width = controller.board.width();
@@ -320,39 +328,46 @@ impl BoardView {
                 } else {
                     self.settings.background_color
                 };
-                self.draw_tile(controller, controller.board.get([i, j]), &cell, color, _glyphs, c, g);
+                self.draw_tile(mode, controller.board.get([i, j]), &cell, color, local_id, controller, _glyphs, c, g);
             }
         }
     }
 
     fn draw_tile<G: Graphics, C>(
-        &self, controller: &BoardController, tile: &Tile, outer: &Extents, background_color: Color,
-        glyphs: &mut C, c: &Context, g: &mut G,
+        &self, mode: DrawMode, tile: &Tile, outer: &Extents, background_color: Color, local_id: &PlayerID,
+        controller: &BoardController, glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Rectangle, Image, Transformed};
+
+        if mode == DrawMode::OnlySelf && tile.item != Some(controller.board.player_tokens[local_id].next_target().clone()) {
+            return;
+        }
+
         let ref settings = self.settings;
 
         let (cell_size, _, _) = self.tile_padding(controller);
         let wall_width = cell_size * settings.wall_width;
         let inner = outer.clone() - wall_width;
 
-        Rectangle::new(background_color)
-            .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, c.transform, g);
+        if mode != DrawMode::OnlySelf {
+            Rectangle::new(background_color)
+                .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, c.transform, g);
 
-        let wall_rect = Rectangle::new(settings.wall_color);
-        wall_rect.draw([outer.west, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
-        wall_rect.draw([inner.east, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
-        wall_rect.draw([outer.west, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
-        wall_rect.draw([inner.east, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
-        let walled_directions = tile.walls();
-        for d in walled_directions {
-            let rect = match d {
-                Direction::North => [outer.west, outer.north, cell_size, wall_width],
-                Direction::South => [outer.west, inner.south, cell_size, wall_width],
-                Direction::East => [inner.east, outer.north, wall_width, cell_size],
-                Direction::West => [outer.west, outer.north, wall_width, cell_size],
-            };
-            wall_rect.draw(rect, &c.draw_state, c.transform, g);
+            let wall_rect = Rectangle::new(settings.wall_color);
+            wall_rect.draw([outer.west, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
+            wall_rect.draw([inner.east, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
+            wall_rect.draw([outer.west, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
+            wall_rect.draw([inner.east, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
+            let walled_directions = tile.walls();
+            for d in walled_directions {
+                let rect = match d {
+                    Direction::North => [outer.west, outer.north, cell_size, wall_width],
+                    Direction::South => [outer.west, inner.south, cell_size, wall_width],
+                    Direction::East => [inner.east, outer.north, wall_width, cell_size],
+                    Direction::West => [outer.west, outer.north, wall_width, cell_size],
+                };
+                wall_rect.draw(rect, &c.draw_state, c.transform, g);
+            }
         }
 
         let text_image = Image::new_color(settings.text_color);
@@ -498,7 +513,7 @@ impl BoardView {
     }
 
     fn draw_player_tokens<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: &PlayerID,
+        &self, mode: DrawMode, controller: &BoardController, local_id: &PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Ellipse;
@@ -517,11 +532,14 @@ impl BoardView {
             let tile = self.tile_extents(controller, row, col);
             let token_rect = tile - wall_width;
 
-            let token_ellipse = Ellipse::new(player.color.into());
-            token_ellipse.draw(token_rect.clone(), &c.draw_state, c.transform, g);
-            if token.player_id == *local_id {
-                let token_core = Ellipse::new([0.0, 0.0, 0.0, 1.0]);
-                token_core.draw(token_rect - wall_width / 2.0, &c.draw_state, c.transform, g);
+            let should = mode == DrawMode::All || token.player_id == *local_id;
+            if should {
+                let token_ellipse = Ellipse::new(player.color.into());
+                token_ellipse.draw(token_rect.clone(), &c.draw_state, c.transform, g);
+                if token.player_id == *local_id {
+                    let token_core = Ellipse::new([0.0, 0.0, 0.0, 1.0]);
+                    token_core.draw(token_rect - wall_width / 2.0, &c.draw_state, c.transform, g);
+                }
             }
         }
     }
@@ -534,7 +552,7 @@ impl BoardView {
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
-            self.draw_tile(controller, &controller.board.loose_tile, &cell, self.settings.background_color, glyphs, c, g);
+            self.draw_tile(DrawMode::All, &controller.board.loose_tile, &cell, self.settings.background_color, local_id, controller, glyphs, c, g);
         }
 
         // draw player target
@@ -578,7 +596,7 @@ impl BoardView {
                 north += 10.0;
 
                 graphics::ellipse(player.color.into(), [west, north, 15.0, 15.0], c.transform, g);
-                let text = format!("{} remaining - current target {:?}", token.targets.len(), token.targets[0]);
+                let text = format!("{} remaining - current target {:?}", token.targets.len(), token.next_target());
                 let transform = c.transform.trans(west + 20.0, north + 10.0);
                 graphics::text(self.settings.text_color, 15, &text, glyphs, transform, g).ok().expect("Failed to draw text");
                 north += 40.0;
