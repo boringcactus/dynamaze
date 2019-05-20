@@ -578,7 +578,7 @@ impl BoardView {
                 north += 10.0;
 
                 graphics::ellipse(player.color.into(), [west, north, 15.0, 15.0], c.transform, g);
-                let text = format!("{} remaining", token.targets.len());
+                let text = format!("{} remaining - current target {:?}", token.targets.len(), token.targets[0]);
                 let transform = c.transform.trans(west + 20.0, north + 10.0);
                 graphics::text(self.settings.text_color, 15, &text, glyphs, transform, g).ok().expect("Failed to draw text");
                 north += 40.0;
