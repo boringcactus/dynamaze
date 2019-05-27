@@ -371,7 +371,7 @@ fn handle_error<T: Error>(err: T, state: Arc<RwLock<NetGameState>>) {
 }
 
 pub fn run_host(state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Result<(String, mpsc::Sender<MessageCtrl>), nat::NatError> {
-    let conn_info: nat::ServerInfo = dbg!(nat::HANDLE.get()?);
+    let conn_info: nat::ServerInfo = nat::HANDLE.get()?;
     let (send, recv) = mpsc::channel(20);
     let ui_thread_sender = send.clone();
     thread::spawn(move || {

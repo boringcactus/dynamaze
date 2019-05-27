@@ -15,6 +15,17 @@ pub enum TurnState {
     MoveToken,
 }
 
+/// Controls session-level game settings
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BoardSettings {
+    /// Tile width of the board
+    pub width: usize,
+    /// Tile height of the board
+    pub height: usize,
+    /// Score required to win
+    pub score_limit: u8,
+}
+
 /// Handles events for DynaMaze game session
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BoardController {
@@ -30,11 +41,15 @@ pub struct BoardController {
     pub turn_order: Vec<PlayerID>,
     /// Current turn state
     pub turn_state: TurnState,
+    /// Settings
+    pub settings: BoardSettings,
 }
 
 impl BoardController {
     /// Creates a new board controller with a new board
-    pub fn new(width: usize, height: usize, player_list: Vec<Player>, host_id: PlayerID) -> BoardController {
+    pub fn new(settings: BoardSettings, player_list: Vec<Player>, host_id: PlayerID) -> BoardController {
+        let width = settings.width;
+        let height = settings.height;
         let mut player_ids: Vec<PlayerID> = player_list.iter().map(|p| p.id).collect();
         player_ids.shuffle(&mut thread_rng());
         let players = player_list.into_iter().map(|p| (p.id, p)).collect();
@@ -46,6 +61,7 @@ impl BoardController {
             host_id,
             turn_order: player_ids,
             turn_state: TurnState::InsertTile,
+            settings,
         }
     }
 
@@ -107,7 +123,7 @@ impl BoardController {
                         let id = self.active_player_id();
                         self.board.move_player(id, pos);
                         // if the player has reached their target...
-                        if Some(self.board.player_tokens[&id].next_target()) == self.board.get([pos.1, pos.0]).item.as_ref() {
+                        if self.board.get([pos.1, pos.0]).whose_target == Some(id) {
                             // advance the player to the next target
                             self.board.player_reached_target(id);
                         }
@@ -119,17 +135,6 @@ impl BoardController {
                 }
             }
         }
-
-        // TODO resize the board from the lobby
-//        if let Some(Button::Keyboard(key)) = e.press_args() {
-//            match key {
-//                Key::Right => self.board = Board::new(self.board.width() + 2, self.board.height(), &self.players),
-//                Key::Left => self.board = Board::new(self.board.width() - 2, self.board.height(), &self.players),
-//                Key::Up => self.board = Board::new(self.board.width(), self.board.height() - 2, &self.players),
-//                Key::Down => self.board = Board::new(self.board.width(), self.board.height() + 2, &self.players),
-//                _ => {}
-//            }
-//        }
 
         dirty
     }
@@ -145,7 +150,7 @@ impl BoardController {
         self.board
             .player_tokens
             .iter()
-            .filter(|(_, token)| token.targets.is_empty())
+            .filter(|(_, token)| token.score >= self.settings.score_limit)
             .nth(0)
             .map(|(id, _)| &self.players[id])
     }

@@ -32,9 +32,8 @@ use piston::input::*;
 use piston::window::{Window, WindowSettings};
 
 pub use crate::board::Board;
-pub use crate::board_controller::BoardController;
+pub use crate::board_controller::{BoardController, BoardSettings};
 pub use crate::board_view::{BoardView, BoardViewSettings};
-pub use crate::item::Item;
 pub use crate::menu_controller::GameController;
 pub use crate::menu_view::GameView;
 pub use crate::player::{Player, PlayerID};
@@ -44,7 +43,6 @@ mod board;
 mod board_controller;
 mod board_view;
 mod colors;
-mod item;
 mod menu;
 mod menu_controller;
 mod menu_view;

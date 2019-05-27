@@ -6,7 +6,7 @@ use clipboard::{ClipboardContext, ClipboardProvider};
 use piston::input::{GenericEvent, Key};
 use rand::prelude::*;
 
-use crate::{BoardController, GameView, Player, PlayerID};
+use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
 use crate::colors;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
 use crate::net::{self, Message, MessageCtrl};
@@ -160,7 +160,13 @@ impl GameController {
             if let NetGameState::Lobby(ref mut info) = *state {
                 if is_host {
                     let players = info.players();
-                    let board_controller = BoardController::new(7, 7, players, info.host.id);
+                    // TODO edit these
+                    let settings = BoardSettings {
+                        width: 7,
+                        height: 7,
+                        score_limit: 10,
+                    };
+                    let board_controller = BoardController::new(settings, players, info.host.id);
                     let net_state = NetGameState::Active(board_controller);
                     *state = net_state;
                     drop(state);

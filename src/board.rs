@@ -1,11 +1,10 @@
 //! Board logic
 
 use std::collections::{BTreeMap, HashSet};
-use std::mem;
 
 use rand::prelude::*;
 
-use crate::{Direction, Item, Player, PlayerID, Shape, Tile};
+use crate::{Direction, Player, PlayerID, Shape, Tile};
 
 /// Information about a player's token on the board
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -14,28 +13,23 @@ pub struct PlayerToken {
     pub player_id: PlayerID,
     /// Position of token (row, col)
     pub position: (usize, usize),
-    /// Target items, first pending to last
-    pub targets: Vec<Item>,
+    /// Number of targets reached
+    pub score: u8,
 }
 
 impl PlayerToken {
     /// Create a new token for the given player at the given position
-    pub fn new(player: &Player, position: (usize, usize), targets: Vec<Item>) -> PlayerToken {
+    pub fn new(player: &Player, position: (usize, usize)) -> PlayerToken {
         PlayerToken {
             player_id: player.id,
             position,
-            targets,
+            score: 0,
         }
-    }
-
-    /// Retrieve the player's next target
-    pub fn next_target(&self) -> &Item {
-        self.targets.first().expect("Player has no targets!")
     }
 
     /// Indicate that a player has reached their target
     pub fn reached_target(&mut self) {
-        self.targets.remove(0);
+        self.score += 1;
     }
 }
 
@@ -62,6 +56,7 @@ impl Board {
     /// Creates a new board
     pub fn new(width: usize, height: usize, players: &BTreeMap<PlayerID, Player>) -> Board {
         // build tiles
+        let loose_tile: Tile = random();
         let mut cells = vec![];
         for _ in 0..height {
             let mut row = vec![];
@@ -71,10 +66,10 @@ impl Board {
             cells.push(row);
         }
         // set corners
-        cells[0][0] = Tile { shape: Shape::L, orientation: Direction::East, item: None };
-        cells[0][width - 1] = Tile { shape: Shape::L, orientation: Direction::South, item: None };
-        cells[height - 1][0] = Tile { shape: Shape::L, orientation: Direction::North, item: None };
-        cells[height - 1][width - 1] = Tile { shape: Shape::L, orientation: Direction::West, item: None };
+        cells[0][0] = Tile { shape: Shape::L, orientation: Direction::East, whose_target: None };
+        cells[0][width - 1] = Tile { shape: Shape::L, orientation: Direction::South, whose_target: None };
+        cells[height - 1][0] = Tile { shape: Shape::L, orientation: Direction::North, whose_target: None };
+        cells[height - 1][width - 1] = Tile { shape: Shape::L, orientation: Direction::West, whose_target: None };
         // ensure top/bottom fixed tiles point inwards
         for i in 0..width {
             if i % 2 == 0 {
@@ -90,30 +85,7 @@ impl Board {
                 avoid_path(&mut cells[i][width - 1], Direction::East);
             }
         }
-        // place items
-        let mut loose_tile: Tile = random();
-        for item in &crate::item::ITEM_LIST {
-            let mut rng = thread_rng();
-            let row: usize = (0..height).choose(&mut rng).expect("Failed to generate position");
-            let col: usize = (0..width).choose(&mut rng).expect("Failed to generate position");
-            if let Some(ref old_item) = cells[row][col].item {
-                if let Some(ref older_item) = loose_tile.item {
-                    println!("Lost {}", older_item.char());
-                }
-                loose_tile.item = Some(old_item.clone());
-            }
-            cells[row][col].item = Some(item.clone());
-        }
-        // create tokens and assign targets
-        let player_count = players.len();
-        let mut legal_items: Vec<_> = cells.iter()
-            .flat_map(|row| row.iter().map(|tile| tile.item.clone()))
-            .filter_map(|x| x).collect();
-        if let Some(ref x) = loose_tile.item {
-            legal_items.push(x.clone());
-        }
-        legal_items.shuffle(&mut thread_rng());
-        let player_item_count = legal_items.len() / player_count;
+        // create tokens
         let player_tokens = players.iter().enumerate().map(move |(i, (_, player))| {
             let position = match i {
                 0 => (0, 0),
@@ -122,17 +94,20 @@ impl Board {
                 3 => (height - 1, 0),
                 _ => panic!("Too many players"),
             };
-            let remaining_items = legal_items.split_off(player_item_count);
-            let player_items = mem::replace(&mut legal_items, remaining_items);
-            println!("Gave player {:?} targets {:?}", player.id, player_items);
-            (player.id, PlayerToken::new(player, position, player_items))
+            (player.id, PlayerToken::new(player, position))
         }).collect();
-        Board {
+        // assign next locations
+        let mut result = Board {
             cells,
             loose_tile,
             loose_tile_position: None,
             player_tokens,
+        };
+        let player_ids = result.player_tokens.keys().map(|x| x.clone()).collect::<Vec<_>>();
+        for player in &player_ids {
+            result.assign_next_target(*player);
         }
+        result
     }
 
     /// Gets a cell from the board
@@ -204,7 +179,7 @@ impl Board {
                 (*id, PlayerToken {
                     player_id: *id,
                     position: new_position,
-                    targets: token.targets.clone(),
+                    score: token.score,
                 })
             }).collect();
         }
@@ -249,18 +224,30 @@ impl Board {
         result
     }
 
+    fn assign_next_target(&mut self, player_id: PlayerID) {
+        let mut rng = rand::thread_rng();
+        let (old_row, old_col) = self.player_tokens.get(&player_id).unwrap().position;
+        // TODO never give easy targets
+        loop {
+            let row = rng.gen_range(0, self.height());
+            let col = rng.gen_range(0, self.width());
+            if (row, col) == (old_row, old_col) {
+                continue;
+            }
+            if self.cells[row][col].whose_target.is_none() {
+                self.cells[row][col].whose_target = Some(player_id);
+                break;
+            }
+        }
+    }
+
     /// Indicates that the given player has reached their target
     pub fn player_reached_target(&mut self, player_id: PlayerID) {
-        self.player_tokens = self.player_tokens.iter().map(|(id, token)| {
-            if player_id != *id {
-                return (*id, token.clone());
-            }
-            let targets = token.targets.clone().split_first().expect("Reached target but no targets left").1.to_vec();
-            (*id, PlayerToken {
-                player_id: *id,
-                position: token.position,
-                targets,
-            })
-        }).collect();
+        if let Some(token) = self.player_tokens.get_mut(&player_id) {
+            let (row, col) = token.position;
+            self.cells[row][col].whose_target = None;
+            token.score += 1;
+            self.assign_next_target(player_id);
+        }
     }
 }

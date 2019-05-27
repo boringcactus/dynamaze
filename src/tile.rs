@@ -6,7 +6,7 @@ use std::ops;
 use rand::distributions::{Distribution, Standard};
 use rand::prelude::*;
 
-use crate::Item;
+use crate::PlayerID;
 
 /// Cardinal directions
 #[derive(Eq, PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
@@ -129,8 +129,8 @@ pub struct Tile {
     pub shape: Shape,
     /// Orientation of the tile
     pub orientation: Direction,
-    /// Item held by the tile
-    pub item: Option<Item>,
+    /// Player whose target is this tile
+    pub whose_target: Option<PlayerID>,
 }
 
 impl Tile {
@@ -156,7 +156,7 @@ impl Distribution<Tile> for Standard {
         Tile {
             shape,
             orientation,
-            item: None,
+            whose_target: None,
         }
     }
 }

@@ -19,6 +19,7 @@ struct Extents {
 }
 
 impl Extents {
+    #[allow(dead_code)]
     fn center(&self) -> [f64; 2] {
         [(self.west + self.east) / 2.0, (self.north + self.south) / 2.0]
     }
@@ -244,7 +245,7 @@ impl BoardView {
         let board_rect = [board.west, board.north, board_width, board_height];
 
         // draw the tiles
-        self.draw_tiles(DrawMode::All, controller, local_id, glyphs, c, g);
+        self.draw_tiles(controller, local_id, glyphs, c, g);
 
         // draw tile edges
         let cell_edge = Line::new(settings.cell_edge_color, settings.cell_edge_radius);
@@ -271,8 +272,6 @@ impl BoardView {
 
         // draw own token on top of others
         self.draw_player_tokens(DrawMode::OnlySelf, controller, local_id, glyphs, c, g);
-        // draw own target on top of everything
-        self.draw_tiles(DrawMode::OnlySelf, controller, local_id, glyphs, c, g);
 
         // draw UI
         self.draw_ui(controller, local_id, glyphs, c, g);
@@ -312,7 +311,7 @@ impl BoardView {
     }
 
     fn draw_tiles<G: Graphics, C>(
-        &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID,
+        &self, controller: &BoardController, local_id: PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         let board_tile_width = controller.board.width();
@@ -329,21 +328,17 @@ impl BoardView {
                 } else {
                     self.settings.background_color
                 };
-                self.draw_tile(mode, controller.board.get([i, j]), &cell, color, local_id, controller, _glyphs, c, g);
+                self.draw_tile(controller.board.get([i, j]), &cell, color, local_id, controller, _glyphs, c, g);
             }
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     fn draw_tile<G: Graphics, C>(
-        &self, mode: DrawMode, tile: &Tile, outer: &Extents, background_color: Color, local_id: PlayerID,
-        controller: &BoardController, glyphs: &mut C, c: &Context, g: &mut G,
+        &self, tile: &Tile, outer: &Extents, background_color: Color, _local_id: PlayerID,
+        controller: &BoardController, _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
-        use graphics::{Rectangle, Image, Transformed};
-
-        if mode == DrawMode::OnlySelf && tile.item != Some(controller.board.player_tokens[&local_id].next_target().clone()) {
-            return;
-        }
+        use graphics::{Rectangle, Polygon};
 
         let settings = &self.settings;
 
@@ -351,43 +346,51 @@ impl BoardView {
         let wall_width = cell_size * settings.wall_width;
         let inner = outer.clone() - wall_width;
 
-        if mode != DrawMode::OnlySelf {
-            Rectangle::new(background_color)
-                .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, c.transform, g);
+        Rectangle::new(background_color)
+            .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, c.transform, g);
 
-            let wall_rect = Rectangle::new(settings.wall_color);
-            wall_rect.draw([outer.west, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
-            wall_rect.draw([inner.east, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
-            wall_rect.draw([outer.west, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
-            wall_rect.draw([inner.east, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
-            let walled_directions = tile.walls();
-            for d in walled_directions {
-                let rect = match d {
-                    Direction::North => [outer.west, outer.north, cell_size, wall_width],
-                    Direction::South => [outer.west, inner.south, cell_size, wall_width],
-                    Direction::East => [inner.east, outer.north, wall_width, cell_size],
-                    Direction::West => [outer.west, outer.north, wall_width, cell_size],
-                };
-                wall_rect.draw(rect, &c.draw_state, c.transform, g);
+        // TODO make this less goofy
+        if let Some(whose_target) = tile.whose_target {
+            let color = controller.players[&whose_target].color;
+
+            // TODO tilt based on something so less reliant on color
+            // TODO animate stripes for current player
+
+            let markers = (0..=6).map(|x| cell_size * (f64::from(x) / 6.0));
+            let Extents { north, east, south, west } = outer.clone();
+            // x increments
+            let x = markers.clone().map(|x| outer.west + x).collect::<Vec<_>>();
+            // y increments
+            let y = markers.clone().map(|y| outer.north + y).collect::<Vec<_>>();
+
+            let p = Polygon::new(color.into());
+            let stripes = [
+                [[x[1], north], [west, y[1]], [west, y[2]], [x[2], north]],
+                [[x[3], north], [west, y[3]], [west, y[4]], [x[4], north]],
+                [[x[5], north], [west, y[5]], [west, y[6]], [x[6], north]],
+                [[east, y[1]], [x[1], south], [x[2], south], [east, y[2]]],
+                [[east, y[3]], [x[3], south], [x[4], south], [east, y[4]]],
+                [[east, y[5]], [x[5], south], [east, south], [east, south]]
+            ];
+            for stripe in &stripes {
+                p.draw(stripe, &c.draw_state, c.transform, g);
             }
         }
 
-        let text_image = Image::new_color(settings.text_color);
-        if let Some(ref item) = tile.item {
-            let ch = item.char();
-            let pos = inner.center();
-            if let Ok(character) = glyphs.character(settings.font_size, ch) {
-                let ch_center_x = pos[0];
-                let ch_center_y = pos[1];
-                let ch_offset_x = -character.width() / 2.0;
-                let ch_offset_y = -character.top() / 2.0;
-                let rad = tile.orientation.rad();
-                let transform = c.transform
-                    .trans(ch_center_x, ch_center_y)
-                    .rot_rad(rad)
-                    .append_transform(graphics::math::translate([ch_offset_x, ch_offset_y]));
-                text_image.draw(character.texture, &c.draw_state, transform, g);
-            }
+        let wall_rect = Rectangle::new(settings.wall_color);
+        wall_rect.draw([outer.west, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
+        wall_rect.draw([inner.east, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
+        wall_rect.draw([outer.west, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
+        wall_rect.draw([inner.east, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
+        let walled_directions = tile.walls();
+        for d in walled_directions {
+            let rect = match d {
+                Direction::North => [outer.west, outer.north, cell_size, wall_width],
+                Direction::South => [outer.west, inner.south, cell_size, wall_width],
+                Direction::East => [inner.east, outer.north, wall_width, cell_size],
+                Direction::West => [outer.west, outer.north, wall_width, cell_size],
+            };
+            wall_rect.draw(rect, &c.draw_state, c.transform, g);
         }
     }
 
@@ -554,17 +557,16 @@ impl BoardView {
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
-            self.draw_tile(DrawMode::All, &controller.board.loose_tile, &cell, self.settings.background_color, local_id, controller, glyphs, c, g);
+            self.draw_tile(&controller.board.loose_tile, &cell, self.settings.background_color, local_id, controller, glyphs, c, g);
         }
 
         // draw player target
         {
             let (cell_size, _, _) = self.tile_padding(controller);
             let (south_panel, _) = self.ui_extents();
-            let target_item = controller.board.player_tokens[&local_id].next_target();
             let my_turn = local_id == controller.active_player_id();
             let turn_status = if my_turn { "is" } else { "is not" };
-            let text = format!("Your target is {} and it {} your turn", target_item.char(), turn_status);
+            let text = format!("It {} your turn", turn_status);
             let west = south_panel.west + cell_size * 1.5;
             let north = south_panel.north + 20.0;
             let transform = c.transform.trans(west, north);
@@ -595,7 +597,7 @@ impl BoardView {
                 north += 10.0;
 
                 graphics::ellipse(player.color.into(), [west, north, 15.0, 15.0], c.transform, g);
-                let text = format!("{} remaining - current target {:?}", token.targets.len(), token.next_target());
+                let text = format!("score: {}", token.score);
                 let transform = c.transform.trans(west + 20.0, north + 10.0);
                 graphics::text(self.settings.text_color, 15, &text, glyphs, transform, g).ok().expect("Failed to draw text");
                 north += 40.0;
