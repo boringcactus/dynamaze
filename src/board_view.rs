@@ -363,7 +363,7 @@ impl BoardView {
             // y increments
             let y = markers.clone().map(|y| outer.north + y).collect::<Vec<_>>();
 
-            let p = Polygon::new(color.into());
+            let poly = Polygon::new(color.into());
             let stripes = [
                 [[x[1], north], [west, y[1]], [west, y[2]], [x[2], north]],
                 [[x[3], north], [west, y[3]], [west, y[4]], [x[4], north]],
@@ -373,7 +373,7 @@ impl BoardView {
                 [[east, y[5]], [x[5], south], [east, south], [east, south]]
             ];
             for stripe in &stripes {
-                p.draw(stripe, &c.draw_state, c.transform, g);
+                poly.draw(stripe, &c.draw_state, c.transform, g);
             }
         }
 

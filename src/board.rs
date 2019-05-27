@@ -103,7 +103,7 @@ impl Board {
             loose_tile_position: None,
             player_tokens,
         };
-        let player_ids = result.player_tokens.keys().map(|x| x.clone()).collect::<Vec<_>>();
+        let player_ids = result.player_tokens.keys().copied().collect::<Vec<_>>();
         for player in &player_ids {
             result.assign_next_target(*player);
         }
@@ -226,7 +226,7 @@ impl Board {
 
     fn assign_next_target(&mut self, player_id: PlayerID) {
         let mut rng = rand::thread_rng();
-        let (old_row, old_col) = self.player_tokens.get(&player_id).unwrap().position;
+        let (old_row, old_col) = self.player_tokens[&player_id].position;
         // TODO never give easy targets
         loop {
             let row = rng.gen_range(0, self.height());

@@ -182,20 +182,28 @@ impl<S> Clone for SinkPool<S> where S: Sink, <S as Sink>::SinkItem: Clone {
 
 #[derive(Clone, Debug)]
 pub enum MessageCtrl {
-    SendGlobal(Message),
-    SendNearGlobal(Message, SocketAddr),
+    SendGlobal(Box<Message>),
+    SendNearGlobal(Box<Message>, SocketAddr),
     Disconnect,
 }
 
 impl MessageCtrl {
+    pub fn send(msg: Message) -> Self {
+        MessageCtrl::SendGlobal(Box::new(msg))
+    }
+
+    pub fn send_without(msg: Message, addr: SocketAddr) -> Self {
+        MessageCtrl::SendNearGlobal(Box::new(msg), addr)
+    }
+
     pub fn get_message_if_should_send(self, dest: SocketAddr) -> Option<Message> {
         match self {
-            MessageCtrl::SendGlobal(m) => Some(m),
+            MessageCtrl::SendGlobal(m) => Some(*m),
             MessageCtrl::SendNearGlobal(m, addr) => {
                 if addr == dest {
                     None
                 } else {
-                    Some(m)
+                    Some(*m)
                 }
             },
             MessageCtrl::Disconnect => None,
@@ -205,7 +213,7 @@ impl MessageCtrl {
 
 impl Into<MessageCtrl> for Message {
     fn into(self) -> MessageCtrl {
-        MessageCtrl::SendGlobal(self)
+        MessageCtrl::SendGlobal(Box::new(self))
     }
 }
 
@@ -216,14 +224,14 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
         Message::JoinLobby(player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
                 lobby_info.guests.push(player);
-                return Some(MessageCtrl::SendGlobal(Message::State(state.clone())))
+                return Some(MessageCtrl::send(Message::State(state.clone())))
             }
         }
         Message::EditPlayer(id, player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
                 if is_host {
                     lobby_info.guests.iter_mut().filter(|p| p.id == id).for_each(|p| *p = player.clone());
-                    return Some(MessageCtrl::SendGlobal(Message::State(state.clone())))
+                    return Some(MessageCtrl::send(Message::State(state.clone())))
                 }
             }
         }
@@ -231,7 +239,7 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
             // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
             *state = new_state;
             if is_host {
-                return Some(MessageCtrl::SendNearGlobal(Message::State(state.clone()), source))
+                return Some(MessageCtrl::send_without(Message::State(state.clone()), source))
             }
         }
     }
