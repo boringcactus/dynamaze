@@ -103,7 +103,7 @@ impl Board {
             loose_tile_position: None,
             player_tokens,
         };
-        let player_ids = result.player_tokens.keys().copied().collect::<Vec<_>>();
+        let player_ids = result.player_tokens.keys().cloned().collect::<Vec<_>>();
         for player in &player_ids {
             result.assign_next_target(*player);
         }
