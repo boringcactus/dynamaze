@@ -1,3 +1,5 @@
+#![allow(clippy::unnecessary_cast)]
+
 use conrod_core::Color as Ccolor;
 use graphics::types::Color as Gcolor;
 use rand::distributions::{Distribution, Standard};

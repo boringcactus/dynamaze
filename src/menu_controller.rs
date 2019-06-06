@@ -119,14 +119,13 @@ impl GameController {
             let mut state = state.write().expect("Failed to lock state");
             let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
-                let mut player = info.player(&self.player_id).clone();
+                let player = info.player_mut(&self.player_id);
                 player.color = random();
                 if is_host {
-                    info.host = player;
                     drop(state);
                     self.broadcast_state();
                 } else {
-                    let message = Message::EditPlayer(self.player_id, player);
+                    let message = Message::EditPlayer(self.player_id, player.clone());
                     sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
                 }
             }
@@ -140,12 +139,13 @@ impl GameController {
             let mut state = state.write().expect("Failed to lock state");
             let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
-                let mut player = info.player(&self.player_id).clone();
+                let player = info.player_mut(&self.player_id);
                 player.name = new_name.to_string();
                 if is_host {
-                    info.host = player;
+                    drop(state);
+                    self.broadcast_state();
                 } else {
-                    let message = Message::EditPlayer(self.player_id, player);
+                    let message = Message::EditPlayer(self.player_id, player.clone());
                     sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
                 }
             }
@@ -159,7 +159,7 @@ impl GameController {
             let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
                 if is_host {
-                    let players = info.players();
+                    let players = info.players_cloned();
                     // TODO edit these
                     let settings = BoardSettings {
                         width: 7,

@@ -38,7 +38,7 @@ impl LobbyInfo {
     }
 
     /// Retrieves the list of all connected players as clones
-    pub fn players(&self) -> Vec<Player> {
+    pub fn players_cloned(&self) -> Vec<Player> {
         let mut players = vec![self.host.clone()];
         players.append(&mut self.guests.clone());
         players
@@ -50,6 +50,15 @@ impl LobbyInfo {
             &self.host
         } else {
             self.guests.iter().filter(|p| p.id == *id).nth(0).expect("Not in lobby!")
+        }
+    }
+
+    /// Gets a mutable player by ID
+    pub fn player_mut(&mut self, id: &PlayerID) -> &mut Player {
+        if self.host.id == *id {
+            &mut self.host
+        } else {
+            self.guests.iter_mut().filter(|p| p.id == *id).nth(0).expect("Not in lobby!")
         }
     }
 }

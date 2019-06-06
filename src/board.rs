@@ -52,6 +52,16 @@ fn avoid_path(tile: &mut Tile, target: Direction) {
     }
 }
 
+fn valid_move(ind: (usize, usize), dir: Direction, (width, height): (usize, usize)) -> bool {
+    let (j, i) = ind;
+    match dir {
+        Direction::North => j > 0,
+        Direction::South => j < height - 1,
+        Direction::West => i > 0,
+        Direction::East => i < width - 1,
+    }
+}
+
 impl Board {
     /// Creates a new board
     pub fn new(width: usize, height: usize, players: &BTreeMap<PlayerID, Player>) -> Board {
@@ -125,29 +135,21 @@ impl Board {
         self.cells.len()
     }
 
-    fn valid(&self, ind: (usize, usize), dir: Direction) -> bool {
-        let (j, i) = ind;
-        match dir {
-            Direction::North => j > 0,
-            Direction::South => j < self.height() - 1,
-            Direction::West => i > 0,
-            Direction::East => i < self.width() - 1,
-        }
-    }
-
     /// Inserts the loose tile at its current position
     pub fn insert_loose_tile(&mut self) {
         if let Some((dir, guide_idx)) = self.loose_tile_position {
+            let dimensions = (self.width(), self.height());
+            let (width, height) = dimensions;
             let target_idx = 2 * guide_idx + 1;
             // general process: copy into the current position, so start opposite correct margin
             let (mut j, mut i) = match dir {
-                Direction::North => (self.height() - 1, target_idx),
+                Direction::North => (height - 1, target_idx),
                 Direction::South => (0, target_idx),
-                Direction::West => (target_idx, self.width() - 1),
+                Direction::West => (target_idx, width - 1),
                 Direction::East => (target_idx, 0),
             };
             let next_loose_tile = self.cells[j][i].clone();
-            while self.valid((j, i), dir) {
+            while valid_move((j, i), dir, dimensions) {
                 let (next_j, next_i) = (j, i) + dir;
                 self.cells[j][i] = self.cells[next_j][next_i].clone();
                 j = next_j;
@@ -157,31 +159,26 @@ impl Board {
             self.loose_tile = next_loose_tile;
             // move all tokens
             let move_dir = dir * Direction::South;
-            self.player_tokens = self.player_tokens.iter().map(|(id, token)| {
+            for token in self.player_tokens.values_mut() {
                 let (old_row, old_col) = token.position;
                 let should_be_target_idx = match move_dir {
                     Direction::North | Direction::South => old_col,
                     Direction::East | Direction::West => old_row,
                 };
                 if should_be_target_idx != target_idx {
-                    return (*id, token.clone());
+                    continue;
                 }
-                let new_position = if self.valid(token.position, move_dir) {
+                token.position = if valid_move(token.position, move_dir, dimensions) {
                     token.position + (dir * Direction::South)
                 } else {
                     let (old_row, old_col) = token.position;
                     let (new_row, new_col) = match move_dir {
-                        Direction::East | Direction::West => (old_row, (old_col + self.width())) + move_dir,
-                        Direction::North | Direction::South => ((old_row + self.height()), old_col) + move_dir,
+                        Direction::East | Direction::West => (old_row, (old_col + width)) + move_dir,
+                        Direction::North | Direction::South => ((old_row + height), old_col) + move_dir,
                     };
-                    (new_row % self.width(), new_col % self.height())
+                    (new_row % width, new_col % height)
                 };
-                (*id, PlayerToken {
-                    player_id: *id,
-                    position: new_position,
-                    score: token.score,
-                })
-            }).collect();
+            }
         }
     }
 
@@ -197,6 +194,7 @@ impl Board {
 
     /// Gets all the coordinates reachable from the given (row, col)
     pub fn reachable_coords(&self, from: (usize, usize)) -> HashSet<(usize, usize)> {
+        let dimensions = (self.width(), self.height());
         // result contains everything seen, frontier contains only things not yet scanned
         let mut result = HashSet::new();
         result.insert(from);
@@ -206,7 +204,7 @@ impl Board {
             // for each reachable direction...
             for dir in self.cells[curr_row][curr_col].paths() {
                 // if it doesn't fall off the board...
-                if self.valid((curr_row, curr_col), dir) {
+                if valid_move((curr_row, curr_col), dir, dimensions) {
                     // find the connecting tile
                     let (next_row, next_col) = (curr_row, curr_col) + dir;
                     // if that tile connects up as well...

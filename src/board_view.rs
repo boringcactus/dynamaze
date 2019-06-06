@@ -328,14 +328,14 @@ impl BoardView {
                 } else {
                     self.settings.background_color
                 };
-                self.draw_tile(controller.board.get([i, j]), &cell, color, local_id, controller, _glyphs, c, g);
+                self.draw_tile(controller.board.get([i, j]), cell, color, local_id, controller, _glyphs, c, g);
             }
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     fn draw_tile<G: Graphics, C>(
-        &self, tile: &Tile, outer: &Extents, background_color: Color, _local_id: PlayerID,
+        &self, tile: &Tile, outer: Extents, background_color: Color, _local_id: PlayerID,
         controller: &BoardController, _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Rectangle, Polygon};
@@ -357,7 +357,7 @@ impl BoardView {
             // TODO animate stripes for current player
 
             let markers = (0..=6).map(|x| cell_size * (f64::from(x) / 6.0));
-            let Extents { north, east, south, west } = outer.clone();
+            let Extents { north, east, south, west } = outer;
             // x increments
             let x = markers.clone().map(|x| outer.west + x).collect::<Vec<_>>();
             // y increments
@@ -557,7 +557,7 @@ impl BoardView {
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
-            self.draw_tile(&controller.board.loose_tile, &cell, self.settings.background_color, local_id, controller, glyphs, c, g);
+            self.draw_tile(&controller.board.loose_tile, cell, self.settings.background_color, local_id, controller, glyphs, c, g);
         }
 
         // draw player target
