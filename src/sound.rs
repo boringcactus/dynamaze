@@ -79,7 +79,7 @@ impl SoundEngine {
             }
         }
         let sink = music_sinks.entry(music).or_insert_with(|| {
-            let mut sink = Sink::new(&self.device);
+            let sink = Sink::new(&self.device);
             sink.set_volume(MUSIC_VOLUME);
             let file: File = music.into();
             let source = Decoder::new(BufReader::new(file)).expect("Failed to decode");
@@ -115,7 +115,7 @@ impl SoundEngine {
     pub fn play_sound(&self, snd: Sound) {
         let mut sound_sinks = self.sound_sinks.lock().unwrap();
         let sink = sound_sinks.entry(snd).or_insert_with(|| {
-            let mut sink = Sink::new(&self.device);
+            let sink = Sink::new(&self.device);
             sink.set_volume(SOUND_VOLUME);
             sink
         });
