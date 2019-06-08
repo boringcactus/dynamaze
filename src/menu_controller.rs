@@ -72,7 +72,7 @@ impl GameController {
                     conn_str,
                 };
                 self.state = GameState::InGame(conn_state);
-            },
+            }
             Err(e) => {
                 let e = format!("{}", e);
                 self.state = GameState::HardError(e);
@@ -188,7 +188,7 @@ impl GameController {
 
     /// Handles events
     pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E) {
-        use piston::input::{Button};
+        use piston::input::Button;
 
         // This is silly.
         if e.update_args().is_some() {
@@ -199,18 +199,18 @@ impl GameController {
                 GameState::HardError(_) | GameState::Options(_) => {
                     self.last_player = None;
                     sound::Music::Menu
-                },
+                }
                 GameState::InGame(ref conn_state) => {
                     let state = conn_state.state.read().unwrap();
                     match *state {
                         NetGameState::Active(ref board) => {
                             self.last_player = Some(board.active_player_id());
                             sound::Music::InGame
-                        },
+                        }
                         _ => {
                             self.last_player = None;
                             sound::Music::Menu
-                        },
+                        }
                     }
                 }
             };
@@ -364,7 +364,7 @@ impl GameController {
                 for _options in options_button {
                     self.enter_options();
                 }
-            },
+            }
             GameState::ConnectMenu(ref mut connect_addr) => {
                 widget::Text::new("Connect to Game")
                     .color(colors::DARK.into())

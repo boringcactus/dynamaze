@@ -205,7 +205,7 @@ impl MessageCtrl {
                 } else {
                     Some(*m)
                 }
-            },
+            }
             MessageCtrl::Disconnect => None,
         }
     }
@@ -224,14 +224,14 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
         Message::JoinLobby(player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
                 lobby_info.guests.push(player);
-                return Some(MessageCtrl::send(Message::State(state.clone())))
+                return Some(MessageCtrl::send(Message::State(state.clone())));
             }
         }
         Message::EditPlayer(id, player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
                 if is_host {
                     lobby_info.guests.iter_mut().filter(|p| p.id == id).for_each(|p| *p = player.clone());
-                    return Some(MessageCtrl::send(Message::State(state.clone())))
+                    return Some(MessageCtrl::send(Message::State(state.clone())));
                 }
             }
         }
@@ -239,7 +239,7 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
             // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
             *state = new_state;
             if is_host {
-                return Some(MessageCtrl::send_without(Message::State(state.clone()), source))
+                return Some(MessageCtrl::send_without(Message::State(state.clone()), source));
             }
         }
     }
@@ -318,7 +318,7 @@ mod nat {
             let addr: IfAddr = iface.addr;
             if let IfAddr::V4(addr) = addr {
                 if netmask_equivalent(addr.ip, *gateway.addr.ip(), addr.netmask) {
-                    return Ok(addr.ip)
+                    return Ok(addr.ip);
                 }
             }
         }

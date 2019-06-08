@@ -88,8 +88,7 @@ impl Board {
             }
         }
         // ensure left/right fixed tiles point inwards
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..height {
+        #[allow(clippy::needless_range_loop)] for i in 0..height {
             if i % 2 == 0 {
                 avoid_path(&mut cells[i][0], Direction::West);
                 avoid_path(&mut cells[i][width - 1], Direction::East);

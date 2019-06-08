@@ -125,7 +125,7 @@ fn main() {
         game_controller.event(&game_view, &e);
 
         // if updating...
-        if let Some(_) = e.update_args() {
+        if e.update_args().is_some() {
             // peek for gamepad events (remapped to keyboard events automatically)
             while let Some(e) = gamepad.next_event() {
                 game_controller.event(&game_view, &e);
