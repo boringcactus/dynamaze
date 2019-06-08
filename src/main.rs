@@ -11,6 +11,7 @@ extern crate conrod_core;
 extern crate conrod_piston;
 extern crate futures;
 extern crate get_if_addrs;
+extern crate gilrs;
 extern crate glutin_window;
 extern crate graphics;
 extern crate igd;
@@ -43,6 +44,7 @@ mod board;
 mod board_controller;
 mod board_view;
 mod colors;
+mod gamepad;
 mod menu;
 mod menu_controller;
 mod menu_view;
@@ -104,6 +106,8 @@ fn main() {
 
     let ids = menu_controller::Ids::new(ui.widget_id_generator());
 
+    let mut gamepad = gamepad::Handler::new();
+
     while let Some(e) = events.next(&mut window) {
         // conrod
         let size = window.size();
@@ -117,7 +121,16 @@ fn main() {
             game_controller.gui(&mut ui, &ids);
         });
 
+        // process this event
         game_controller.event(&game_view, &e);
+
+        // if updating...
+        if let Some(_) = e.update_args() {
+            // peek for gamepad events (remapped to keyboard events automatically)
+            while let Some(e) = gamepad.next_event() {
+                game_controller.event(&game_view, &e);
+            }
+        }
 
         if let Some(args) = e.render_args() {
             let viewport = args.viewport();
