@@ -144,8 +144,8 @@ impl Tile {
     }
 
     /// Rotate this tile clockwise
-    pub fn rotate(&mut self) {
-        self.orientation = Direction::East * self.orientation;
+    pub fn rotate(&mut self, direction: Direction) {
+        self.orientation = direction * self.orientation;
     }
 }
 

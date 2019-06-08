@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use piston::input::GenericEvent;
 use rand::prelude::*;
 
-use crate::{Board, BoardView, Player, PlayerID};
+use crate::{Board, BoardView, Direction, Player, PlayerID};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TurnState {
@@ -70,9 +70,15 @@ impl BoardController {
         self.turn_order[0]
     }
 
+    fn move_loose_tile(&mut self, new_loose_tile_position: Option<(Direction, usize)>) -> bool {
+        let old_loose_tile_position = self.board.loose_tile_position;
+        self.board.loose_tile_position = new_loose_tile_position;
+        old_loose_tile_position != new_loose_tile_position
+    }
+
     /// Handles events, returns whether or not the state may have changed
     pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID) -> bool {
-        use piston::input::{Button, MouseButton};
+        use piston::input::{Button, MouseButton, Key};
 
         // never do anything if this player is not the active player
         if local_id != self.active_player_id() {
@@ -89,12 +95,34 @@ impl BoardController {
         if let Some(pos) = e.mouse_cursor_args() {
             self.cursor_pos = pos;
             if should_insert {
-                let old_loose_tile_position = self.board.loose_tile_position;
                 let new_loose_tile_position = view.in_insert_guide(&pos, self);
-                self.board.loose_tile_position = new_loose_tile_position;
-                if old_loose_tile_position != new_loose_tile_position {
-                    dirty = true;
-                }
+                dirty = dirty || self.move_loose_tile(new_loose_tile_position);
+            }
+        }
+
+        if let Some(Button::Keyboard(key)) = e.press_args() {
+            // handle insert
+            if should_insert {
+                let newly_dirty = match key {
+                    Key::Left => self.handle_insert_key_direction(Direction::East),
+                    Key::Right => self.handle_insert_key_direction(Direction::West),
+                    Key::Up => self.handle_insert_key_direction(Direction::North),
+                    Key::Down => self.handle_insert_key_direction(Direction::South),
+                    Key::LShift => {
+                        self.board.loose_tile.rotate(Direction::West);
+                        true
+                    }
+                    Key::RShift => {
+                        self.board.loose_tile.rotate(Direction::East);
+                        true
+                    }
+                    Key::Space => {
+                        self.insert_loose_tile();
+                        true
+                    }
+                    _ => false
+                };
+                dirty = dirty || newly_dirty;
             }
         }
 
@@ -104,14 +132,10 @@ impl BoardController {
                 // if the tile isn't aligned with a guide, or the button wasn't left...
                 if self.board.loose_tile_position.is_none() || button != MouseButton::Left {
                     // rotate the loose tile
-                    self.board.loose_tile.rotate();
+                    self.board.loose_tile.rotate(Direction::East);
                 } else {
                     // otherwise, insert the tile
-                    self.board.insert_loose_tile();
-                    // advance turn state
-                    self.turn_state = TurnState::MoveToken;
-                    // reset tile position
-                    self.board.loose_tile_position = None;
+                    self.insert_loose_tile();
                 }
                 dirty = true;
             } else if let Some(pos) = view.in_tile(&self.cursor_pos, self) {
@@ -137,6 +161,80 @@ impl BoardController {
         }
 
         dirty
+    }
+
+    fn insert_loose_tile(&mut self) {
+        self.board.insert_loose_tile();
+        // advance turn state
+        self.turn_state = TurnState::MoveToken;
+        // reset tile position
+        self.board.loose_tile_position = None;
+    }
+
+    fn handle_insert_key_direction(&mut self, move_dir: Direction) -> bool {
+        let old_loose_tile_position = self.board.loose_tile_position;
+        let guides_x = self.board.width() / 2;
+        let guides_y = self.board.height() / 2;
+        let new_loose_tile_position = match (move_dir, old_loose_tile_position) {
+            (Direction::East, None) => (Direction::West, guides_y / 2),
+            (Direction::East, Some((Direction::East, n))) => {
+                let count = guides_x - 1;
+                let dir = if n < guides_y / 2 {
+                    Direction::North
+                } else {
+                    Direction::South
+                };
+                (dir, count)
+            }
+            (Direction::East, Some((Direction::West, n))) => (Direction::West, n),
+            (Direction::East, Some((Direction::North, 0))) => (Direction::West, 0),
+            (Direction::East, Some((Direction::South, 0))) => (Direction::West, guides_y - 1),
+            (Direction::East, Some((d, n))) if n > 0 => (d, n.saturating_sub(1)),
+            (Direction::West, None) => (Direction::East, guides_y / 2),
+            (Direction::West, Some((Direction::West, n))) => {
+                let dir = if n < guides_y / 2 {
+                    Direction::North
+                } else {
+                    Direction::South
+                };
+                (dir, 0)
+            }
+            (Direction::West, Some((Direction::East, n))) => (Direction::East, n),
+            (Direction::West, Some((Direction::North, n))) if n == guides_x - 1 => (Direction::East, 0),
+            (Direction::West, Some((Direction::South, n))) if n == guides_x - 1 => (Direction::East, guides_y - 1),
+            (Direction::West, Some((d, n))) => (d, (n + 1).min(guides_x - 1)),
+            (Direction::South, None) => (Direction::South, guides_x / 2),
+            (Direction::South, Some((Direction::North, n))) => {
+                let dir = if n < guides_x / 2 {
+                    Direction::West
+                } else {
+                    Direction::East
+                };
+                (dir, 0)
+            }
+            (Direction::South, Some((Direction::South, n))) => (Direction::South, n),
+            (Direction::South, Some((Direction::West, n))) if n == guides_y - 1 => (Direction::South, 0),
+            (Direction::South, Some((Direction::East, n))) if n == guides_y - 1 => (Direction::South, guides_x - 1),
+            (Direction::South, Some((d, n))) => (d, (n + 1).min(guides_y - 1)),
+            (Direction::North, None) => (Direction::North, guides_x / 2),
+            (Direction::North, Some((Direction::South, n))) => {
+                let count = guides_y - 1;
+                let dir = if n < guides_x / 2 {
+                    Direction::West
+                } else {
+                    Direction::East
+                };
+                (dir, count)
+            }
+            (Direction::North, Some((Direction::North, n))) => (Direction::North, n),
+            (Direction::North, Some((Direction::West, 0))) => (Direction::North, 0),
+            (Direction::North, Some((Direction::East, 0))) => (Direction::North, guides_x - 1),
+            (Direction::North, Some((d, n))) => (d, n.saturating_sub(1)),
+            _ => {
+                unreachable!("bad key")
+            }
+        };
+        self.move_loose_tile(Some(new_loose_tile_position))
     }
 
     fn rotate_turn_order(&mut self) {
