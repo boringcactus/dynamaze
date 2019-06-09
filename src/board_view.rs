@@ -328,14 +328,15 @@ impl BoardView {
                 } else {
                     self.settings.background_color
                 };
-                self.draw_tile(controller.board.get([i, j]), cell, color, local_id, controller, _glyphs, c, g);
+                let is_highlighted = controller.highlighted_tile == (j, i);
+                self.draw_tile(controller.board.get([i, j]), cell, color, is_highlighted, controller, _glyphs, c, g);
             }
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     fn draw_tile<G: Graphics, C>(
-        &self, tile: &Tile, outer: Extents, background_color: Color, _local_id: PlayerID,
+        &self, tile: &Tile, outer: Extents, background_color: Color, draw_border: bool,
         controller: &BoardController, _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Rectangle, Polygon};
@@ -391,6 +392,16 @@ impl BoardView {
                 Direction::West => [outer.west, outer.north, wall_width, cell_size],
             };
             wall_rect.draw(rect, &c.draw_state, c.transform, g);
+        }
+
+        if draw_border {
+            let border_width = wall_width / 3.0;
+            let inner = outer.clone() - border_width;
+            let border_rect = Rectangle::new(settings.text_color);
+            border_rect.draw([outer.west, outer.north, cell_size, border_width], &c.draw_state, c.transform, g);
+            border_rect.draw([outer.west, inner.south, cell_size, border_width], &c.draw_state, c.transform, g);
+            border_rect.draw([inner.east, outer.north, border_width, cell_size], &c.draw_state, c.transform, g);
+            border_rect.draw([outer.west, outer.north, border_width, cell_size], &c.draw_state, c.transform, g);
         }
     }
 
@@ -557,7 +568,7 @@ impl BoardView {
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
-            self.draw_tile(&controller.board.loose_tile, cell, self.settings.background_color, local_id, controller, glyphs, c, g);
+            self.draw_tile(&controller.board.loose_tile, cell, self.settings.background_color, false, controller, glyphs, c, g);
         }
 
         // draw player target

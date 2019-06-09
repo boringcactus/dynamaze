@@ -33,6 +33,8 @@ pub struct BoardController {
     pub board: Board,
     /// Mouse position
     pub cursor_pos: [f64; 2],
+    /// Highlighted tile
+    pub highlighted_tile: (usize, usize),
     /// Players
     pub players: BTreeMap<PlayerID, Player>,
     /// Host
@@ -54,9 +56,11 @@ impl BoardController {
         player_ids.shuffle(&mut thread_rng());
         let players = player_list.into_iter().map(|p| (p.id, p)).collect();
         let board = Board::new(width, height, &players);
+        let highlighted_tile = board.player_pos(player_ids[0]);
         BoardController {
             board,
             cursor_pos: [0.0; 2],
+            highlighted_tile,
             players,
             host_id,
             turn_order: player_ids,
@@ -98,14 +102,19 @@ impl BoardController {
                 let new_loose_tile_position = view.in_insert_guide(&pos, self);
                 dirty = dirty || self.move_loose_tile(new_loose_tile_position);
             }
+            if should_move {
+                let old_highlighted_tile = self.highlighted_tile;
+                self.highlighted_tile = view.in_tile(&pos, self).unwrap_or(self.highlighted_tile);
+                dirty = dirty || old_highlighted_tile != self.highlighted_tile;
+            }
         }
 
         if let Some(Button::Keyboard(key)) = e.press_args() {
             // handle insert
             if should_insert {
                 let newly_dirty = match key {
-                    Key::Left => self.handle_insert_key_direction(Direction::East),
-                    Key::Right => self.handle_insert_key_direction(Direction::West),
+                    Key::Left => self.handle_insert_key_direction(Direction::West),
+                    Key::Right => self.handle_insert_key_direction(Direction::East),
                     Key::Up => self.handle_insert_key_direction(Direction::North),
                     Key::Down => self.handle_insert_key_direction(Direction::South),
                     Key::LShift => {
@@ -120,6 +129,18 @@ impl BoardController {
                         self.insert_loose_tile();
                         true
                     }
+                    _ => false
+                };
+                dirty = dirty || newly_dirty;
+            }
+            // handle move
+            if should_move {
+                let newly_dirty = match key {
+                    Key::Left => self.handle_move_key_direction(Direction::West),
+                    Key::Right => self.handle_move_key_direction(Direction::East),
+                    Key::Up => self.handle_move_key_direction(Direction::North),
+                    Key::Down => self.handle_move_key_direction(Direction::South),
+                    Key::Space => self.attempt_move(self.highlighted_tile),
                     _ => false
                 };
                 dirty = dirty || newly_dirty;
@@ -141,26 +162,32 @@ impl BoardController {
             } else if let Some(pos) = view.in_tile(&self.cursor_pos, self) {
                 // if clicked inside a tile, if we should be moving...
                 if should_move {
-                    // if that tile is reachable from the active player's position...
-                    if self.board.reachable_coords(self.board.player_pos(self.active_player_id())).contains(&pos) {
-                        // move the active player to the given position
-                        let id = self.active_player_id();
-                        self.board.move_player(id, pos);
-                        // if the player has reached their target...
-                        if self.board.get([pos.1, pos.0]).whose_target == Some(id) {
-                            // advance the player to the next target
-                            self.board.player_reached_target(id);
-                        }
-                        // advance turn order
-                        self.turn_state = TurnState::InsertTile;
-                        self.rotate_turn_order();
-                        dirty = true;
-                    }
+                    dirty = dirty || self.attempt_move(pos);
                 }
             }
         }
 
         dirty
+    }
+
+    fn attempt_move(&mut self, pos: (usize, usize)) -> bool {
+        let (row, col) = pos;
+        // if that tile is reachable from the active player's position...
+        if self.board.reachable_coords(self.board.player_pos(self.active_player_id())).contains(&pos) {
+            // move the active player to the given position
+            let id = self.active_player_id();
+            self.board.move_player(id, pos);
+            // if the player has reached their target...
+            if self.board.get([col, row]).whose_target == Some(id) {
+                // advance the player to the next target
+                self.board.player_reached_target(id);
+            }
+            // advance turn order
+            self.turn_state = TurnState::InsertTile;
+            self.rotate_turn_order();
+            return true;
+        }
+        false
     }
 
     fn insert_loose_tile(&mut self) {
@@ -176,8 +203,8 @@ impl BoardController {
         let guides_x = self.board.width() / 2;
         let guides_y = self.board.height() / 2;
         let new_loose_tile_position = match (move_dir, old_loose_tile_position) {
-            (Direction::East, None) => (Direction::West, guides_y / 2),
-            (Direction::East, Some((Direction::East, n))) => {
+            (Direction::West, None) => (Direction::West, guides_y / 2),
+            (Direction::West, Some((Direction::East, n))) => {
                 let count = guides_x - 1;
                 let dir = if n < guides_y / 2 {
                     Direction::North
@@ -186,12 +213,12 @@ impl BoardController {
                 };
                 (dir, count)
             }
-            (Direction::East, Some((Direction::West, n))) => (Direction::West, n),
-            (Direction::East, Some((Direction::North, 0))) => (Direction::West, 0),
-            (Direction::East, Some((Direction::South, 0))) => (Direction::West, guides_y - 1),
-            (Direction::East, Some((d, n))) if n > 0 => (d, n.saturating_sub(1)),
-            (Direction::West, None) => (Direction::East, guides_y / 2),
-            (Direction::West, Some((Direction::West, n))) => {
+            (Direction::West, Some((Direction::West, n))) => (Direction::West, n),
+            (Direction::West, Some((Direction::North, 0))) => (Direction::West, 0),
+            (Direction::West, Some((Direction::South, 0))) => (Direction::West, guides_y - 1),
+            (Direction::West, Some((d, n))) if n > 0 => (d, n.saturating_sub(1)),
+            (Direction::East, None) => (Direction::East, guides_y / 2),
+            (Direction::East, Some((Direction::West, n))) => {
                 let dir = if n < guides_y / 2 {
                     Direction::North
                 } else {
@@ -199,10 +226,10 @@ impl BoardController {
                 };
                 (dir, 0)
             }
-            (Direction::West, Some((Direction::East, n))) => (Direction::East, n),
-            (Direction::West, Some((Direction::North, n))) if n == guides_x - 1 => (Direction::East, 0),
-            (Direction::West, Some((Direction::South, n))) if n == guides_x - 1 => (Direction::East, guides_y - 1),
-            (Direction::West, Some((d, n))) => (d, (n + 1).min(guides_x - 1)),
+            (Direction::East, Some((Direction::East, n))) => (Direction::East, n),
+            (Direction::East, Some((Direction::North, n))) if n == guides_x - 1 => (Direction::East, 0),
+            (Direction::East, Some((Direction::South, n))) if n == guides_x - 1 => (Direction::East, guides_y - 1),
+            (Direction::East, Some((d, n))) => (d, (n + 1).min(guides_x - 1)),
             (Direction::South, None) => (Direction::South, guides_x / 2),
             (Direction::South, Some((Direction::North, n))) => {
                 let dir = if n < guides_x / 2 {
@@ -237,10 +264,25 @@ impl BoardController {
         self.move_loose_tile(Some(new_loose_tile_position))
     }
 
+    fn handle_move_key_direction(&mut self, direction: Direction) -> bool {
+        let orig_highlight = self.highlighted_tile;
+        let (row, col) = orig_highlight;
+        let new_highlight = match direction {
+            Direction::North => (row.saturating_sub(1), col),
+            Direction::South => ((row + 1).min(self.board.height() - 1), col),
+            Direction::East => (row, (col + 1).min(self.board.width() - 1)),
+            Direction::West => (row, col.saturating_sub(1)),
+        };
+        self.highlighted_tile = new_highlight;
+        orig_highlight != new_highlight
+    }
+
     fn rotate_turn_order(&mut self) {
         let mut rest = self.turn_order.split_off(1);
         rest.append(&mut self.turn_order);
         self.turn_order = rest;
+        // reset the highlighted tile
+        self.highlighted_tile = self.board.player_pos(self.turn_order[0]);
     }
 
     /// Gets the player who has no targets remaining, if one exists
