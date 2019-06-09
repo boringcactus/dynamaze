@@ -41,7 +41,7 @@ pub struct Board {
     /// Loose tile
     pub loose_tile: Tile,
     /// Loose tile position
-    pub loose_tile_position: Option<(Direction, usize)>,
+    pub loose_tile_position: (Direction, usize),
     /// Player tokens
     pub player_tokens: BTreeMap<PlayerID, PlayerToken>,
 }
@@ -65,13 +65,14 @@ fn valid_move(ind: (usize, usize), dir: Direction, (width, height): (usize, usiz
 impl Board {
     /// Creates a new board
     pub fn new(width: usize, height: usize, players: &BTreeMap<PlayerID, Player>) -> Board {
+        let mut rng = rand::thread_rng();
         // build tiles
-        let loose_tile: Tile = random();
+        let loose_tile: Tile = rng.gen();
         let mut cells = vec![];
         for _ in 0..height {
             let mut row = vec![];
             for _ in 0..width {
-                row.push(random());
+                row.push(rng.gen());
             }
             cells.push(row);
         }
@@ -105,11 +106,16 @@ impl Board {
             };
             (player.id, PlayerToken::new(player, position))
         }).collect();
+        let loose_tile_edge = rng.gen();
+        let loose_tile_spot = match loose_tile_edge {
+            Direction::North | Direction::South => rng.gen_range(0, height / 2),
+            Direction::East | Direction::West => rng.gen_range(0, width / 2),
+        };
         // assign next locations
         let mut result = Board {
             cells,
             loose_tile,
-            loose_tile_position: None,
+            loose_tile_position: (loose_tile_edge, loose_tile_spot),
             player_tokens,
         };
         let player_ids = result.player_tokens.keys().cloned().collect::<Vec<_>>();
@@ -136,48 +142,48 @@ impl Board {
 
     /// Inserts the loose tile at its current position
     pub fn insert_loose_tile(&mut self) {
-        if let Some((dir, guide_idx)) = self.loose_tile_position {
-            let dimensions = (self.width(), self.height());
-            let (width, height) = dimensions;
-            let target_idx = 2 * guide_idx + 1;
-            // general process: copy into the current position, so start opposite correct margin
-            let (mut j, mut i) = match dir {
-                Direction::North => (height - 1, target_idx),
-                Direction::South => (0, target_idx),
-                Direction::West => (target_idx, width - 1),
-                Direction::East => (target_idx, 0),
+        let (dir, guide_idx) = self.loose_tile_position;
+        let dimensions = (self.width(), self.height());
+        let (width, height) = dimensions;
+        let target_idx = 2 * guide_idx + 1;
+        // general process: copy into the current position, so start opposite correct margin
+        let (mut j, mut i) = match dir {
+            Direction::North => (height - 1, target_idx),
+            Direction::South => (0, target_idx),
+            Direction::West => (target_idx, width - 1),
+            Direction::East => (target_idx, 0),
+        };
+        let next_loose_tile = self.cells[j][i].clone();
+        while valid_move((j, i), dir, dimensions) {
+            let (next_j, next_i) = (j, i) + dir;
+            self.cells[j][i] = self.cells[next_j][next_i].clone();
+            j = next_j;
+            i = next_i;
+        }
+        self.cells[j][i] = self.loose_tile.clone();
+        self.loose_tile = next_loose_tile;
+        self.loose_tile_position.0 *= Direction::South;
+        // move all tokens
+        let move_dir = dir * Direction::South;
+        for token in self.player_tokens.values_mut() {
+            let (old_row, old_col) = token.position;
+            let should_be_target_idx = match move_dir {
+                Direction::North | Direction::South => old_col,
+                Direction::East | Direction::West => old_row,
             };
-            let next_loose_tile = self.cells[j][i].clone();
-            while valid_move((j, i), dir, dimensions) {
-                let (next_j, next_i) = (j, i) + dir;
-                self.cells[j][i] = self.cells[next_j][next_i].clone();
-                j = next_j;
-                i = next_i;
+            if should_be_target_idx != target_idx {
+                continue;
             }
-            self.cells[j][i] = self.loose_tile.clone();
-            self.loose_tile = next_loose_tile;
-            // move all tokens
-            let move_dir = dir * Direction::South;
-            for token in self.player_tokens.values_mut() {
+            token.position = if valid_move(token.position, move_dir, dimensions) {
+                token.position + (dir * Direction::South)
+            } else {
                 let (old_row, old_col) = token.position;
-                let should_be_target_idx = match move_dir {
-                    Direction::North | Direction::South => old_col,
-                    Direction::East | Direction::West => old_row,
+                let (new_row, new_col) = match move_dir {
+                    Direction::East | Direction::West => (old_row, (old_col + width)) + move_dir,
+                    Direction::North | Direction::South => ((old_row + height), old_col) + move_dir,
                 };
-                if should_be_target_idx != target_idx {
-                    continue;
-                }
-                token.position = if valid_move(token.position, move_dir, dimensions) {
-                    token.position + (dir * Direction::South)
-                } else {
-                    let (old_row, old_col) = token.position;
-                    let (new_row, new_col) = match move_dir {
-                        Direction::East | Direction::West => (old_row, (old_col + width)) + move_dir,
-                        Direction::North | Direction::South => ((old_row + height), old_col) + move_dir,
-                    };
-                    (new_row % width, new_col % height)
-                };
-            }
+                (new_row % width, new_col % height)
+            };
         }
     }
 

@@ -505,21 +505,13 @@ impl BoardView {
     }
 
     fn loose_tile_extents(&self, controller: &BoardController) -> Extents {
-        if let Some((target_dir, idx)) = controller.board.loose_tile_position {
-            for (dir, guides) in self.insert_guides(controller) {
-                if dir == target_dir {
-                    return guides[idx].clone();
-                }
+        let (target_dir, idx) = controller.board.loose_tile_position;
+        for (dir, guides) in self.insert_guides(controller) {
+            if dir == target_dir {
+                return guides[idx].clone();
             }
         }
-        let (cell_size, _, _) = self.tile_padding(controller);
-        let (south_panel, _) = self.ui_extents();
-        Extents {
-            north: south_panel.north,
-            south: south_panel.north + cell_size,
-            west: south_panel.west,
-            east: south_panel.west + cell_size,
-        }
+        unreachable!()
     }
 
     /// Check if the given position is within the loose tile area

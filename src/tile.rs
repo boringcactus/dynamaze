@@ -71,6 +71,12 @@ impl ops::Mul<Direction> for Direction {
     }
 }
 
+impl ops::MulAssign for Direction {
+    fn mul_assign(&mut self, rhs: Direction) {
+        *self = *self * rhs;
+    }
+}
+
 impl Distribution<Direction> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Direction {
         match rng.gen_range(0, 4) {
