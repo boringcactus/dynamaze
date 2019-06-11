@@ -232,6 +232,9 @@ impl BoardView {
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Line, Rectangle};
 
+        // if a child is coming up soon, pretend we are them instead
+        let local_id = controller.effective_local_id(local_id);
+
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
 
@@ -567,9 +570,9 @@ impl BoardView {
         {
             let (cell_size, _, _) = self.tile_padding(controller);
             let (south_panel, _) = self.ui_extents();
-            let my_turn = local_id == controller.active_player_id();
-            let turn_status = if my_turn { "is" } else { "is not" };
-            let text = format!("It {} your turn", turn_status);
+            let my_turn = controller.local_turn(local_id);
+            let whose_turn = controller.active_player();
+            let text = format!("It is {}'s turn", whose_turn.name);
             let west = south_panel.west + cell_size * 1.5;
             let north = south_panel.north + 20.0;
             let transform = c.transform.trans(west, north);

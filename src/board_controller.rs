@@ -69,9 +69,25 @@ impl BoardController {
         }
     }
 
+    /// Gets the effective local ID (the player living here who will be moving soonest)
+    pub fn effective_local_id(&self, local_id: PlayerID) -> PlayerID {
+        for id in &self.turn_order {
+            let player = &self.players[id];
+            if player.id == local_id || player.parent == Some(local_id) {
+                return player.id;
+            }
+        }
+        local_id
+    }
+
     /// Gets the ID of the player whose turn it is
     pub fn active_player_id(&self) -> PlayerID {
         self.turn_order[0]
+    }
+
+    /// Gets the player whose turn it is
+    pub fn active_player(&self) -> &Player {
+        &self.players[&self.active_player_id()]
     }
 
     fn move_loose_tile(&mut self, new_loose_tile_position: (Direction, usize)) -> bool {
@@ -80,12 +96,20 @@ impl BoardController {
         old_loose_tile_position != new_loose_tile_position
     }
 
+    /// Checks if the player whose turn it is lives with this player (equal to or child of)
+    pub fn local_turn(&self, local_id: PlayerID) -> bool {
+        let active_player = self.active_player();
+        let my_turn = active_player.id == local_id;
+        let child_turn = active_player.parent == Some(local_id);
+        my_turn || child_turn
+    }
+
     /// Handles events, returns whether or not the state may have changed
     pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID) -> bool {
         use piston::input::{Button, MouseButton, Key};
 
         // never do anything if this player is not the active player
-        if local_id != self.active_player_id() {
+        if !self.local_turn(local_id) {
             return false;
         }
 
@@ -174,9 +198,9 @@ impl BoardController {
     fn attempt_move(&mut self, pos: (usize, usize)) -> bool {
         let (row, col) = pos;
         // if that tile is reachable from the active player's position...
-        if self.board.reachable_coords(self.board.player_pos(self.active_player_id())).contains(&pos) {
+        let id = self.active_player_id();
+        if self.board.reachable_coords(self.board.player_pos(id)).contains(&pos) {
             // move the active player to the given position
-            let id = self.active_player_id();
             self.board.move_player(id, pos);
             // if the player has reached their target...
             if self.board.get([col, row]).whose_target == Some(id) {

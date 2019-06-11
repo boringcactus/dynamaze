@@ -14,6 +14,8 @@ pub struct Player {
     pub color: Color,
     /// ID
     pub id: PlayerID,
+    /// Parent player (player whose ID is attached to the game instance)
+    pub parent: Option<PlayerID>,
 }
 
 impl Player {
@@ -23,6 +25,17 @@ impl Player {
             name,
             color,
             id,
+            parent: None,
+        }
+    }
+
+    /// Create a new player with the given parent ID
+    pub fn new_child(name: String, color: Color, id: PlayerID, parent: PlayerID) -> Player {
+        Player {
+            name,
+            color,
+            id,
+            parent: Some(parent)
         }
     }
 }

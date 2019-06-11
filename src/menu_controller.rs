@@ -26,6 +26,7 @@ widget_ids! {
         name_box,
         start_button,
         color_demo,
+        new_local_button,
         main_menu_button,
         error_text,
         audio_slider,
@@ -152,6 +153,26 @@ impl GameController {
         }
     }
 
+    fn new_local_player(&mut self) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
+            let mut state = state.write().expect("Failed to lock state");
+            let is_host = state.is_host(self.player_id);
+            if let NetGameState::Lobby(ref mut info) = *state {
+                let me = info.player(&self.player_id);
+                let child = Player::new_child(me.name.clone(), me.color, random(), me.id);
+                info.guests.push(child.clone());
+                if is_host {
+                    drop(state);
+                    self.broadcast_state();
+                } else {
+                    sender.try_send(Message::JoinLobby(child).into()).map_err(|_| ()).expect("Failed to pass message")
+                }
+            }
+        }
+    }
+
     fn start_hosted_game(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
             let state = &mut conn_state.state;
@@ -190,7 +211,7 @@ impl GameController {
     pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E) {
         use piston::input::Button;
 
-        // This is silly.
+        // TODO only do this when a turn actually ends
         if e.update_args().is_some() {
             let old_last_player = self.last_player;
 
@@ -478,6 +499,18 @@ impl GameController {
                         }
 
                         if is_host {
+                            let new_local_button = widget::Button::new()
+                                .label("Add Local Player")
+                                .color(conrod_core::color::WHITE.with_alpha(0.4))
+                                .label_color(colors::DARK.into())
+                                .wh(BUTTON_DIMENSIONS)
+                                .align_right_of(ids.name_box)
+                                .down_from(ids.color_button, MARGIN)
+                                .set(ids.new_local_button, ui);
+                            for _press in new_local_button {
+                                defer!(self.new_local_player());
+                            }
+
                             let start_button = widget::Button::new()
                                 .label("Begin Game")
                                 .color(conrod_core::color::WHITE.with_alpha(0.4))
