@@ -8,7 +8,33 @@ use graphics::character::CharacterCache;
 use graphics::types::{Color, Rectangle};
 
 use crate::{BoardController, colors, Direction, PlayerID, Tile};
+use crate::anim::AnimGlobalState;
 use crate::board_controller::TurnState;
+
+#[derive(Clone, Debug)]
+struct Diagonal {
+    ll: [f64; 2],
+    ur: [f64; 2],
+}
+
+impl ops::Add<f64> for Diagonal {
+    type Output = Diagonal;
+
+    fn add(self, rhs: f64) -> Self::Output {
+        Diagonal {
+            ll: [self.ll[0] + rhs, self.ll[1] + rhs],
+            ur: [self.ur[0] + rhs, self.ur[1] + rhs],
+        }
+    }
+}
+
+impl ops::Sub<f64> for Diagonal {
+    type Output = Diagonal;
+
+    fn sub(self, rhs: f64) -> Self::Output {
+        self + (-rhs)
+    }
+}
 
 #[derive(Clone, Debug)]
 struct Extents {
@@ -22,6 +48,39 @@ impl Extents {
     #[allow(dead_code)]
     fn center(&self) -> [f64; 2] {
         [(self.west + self.east) / 2.0, (self.north + self.south) / 2.0]
+    }
+
+    fn diagonal(&self) -> Diagonal {
+        Diagonal {
+            ll: [self.west, self.south],
+            ur: [self.east, self.north],
+        }
+    }
+
+    fn clamp_diagonal(&self, line: Diagonal) -> Diagonal {
+        let Diagonal { ll, ur } = line;
+        // find equation of line as x + y = k (works for either point since slope assumed to be 1)
+        let k = ll[0] + ll[1];
+        // if k < west + north then too small so use northwest corner
+        let (ll, ur) = if k < self.west + self.north {
+            let point = [self.west, self.north];
+            (point, point)
+        } else if k > self.east + self.south {
+            // if k > east + south then too big so use southwest corner
+            let point = [self.east, self.south];
+            (point, point)
+        } else if k < self.north + self.east {
+            // if less than halfway, before main diagonal, so trust north and west already
+            let y_at_west = k - self.west;
+            let x_at_north = k - self.north;
+            ([self.west, y_at_west], [x_at_north, self.north])
+        } else {
+            // if more than halfway, after main diagonal, so trust south and east already
+            let y_at_east = k - self.east;
+            let x_at_south = k - self.south;
+            ([x_at_south, self.south], [self.east, y_at_east])
+        };
+        Diagonal { ll, ur }
     }
 }
 
@@ -227,7 +286,7 @@ impl BoardView {
 
     /// Draw board
     pub fn draw<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: PlayerID,
+        &self, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
         glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Line, Rectangle};
@@ -248,7 +307,7 @@ impl BoardView {
         let board_rect = [board.west, board.north, board_width, board_height];
 
         // draw the tiles
-        self.draw_tiles(controller, local_id, glyphs, c, g);
+        self.draw_tiles(controller, local_id, anim_state, glyphs, c, g);
 
         // draw tile edges
         let cell_edge = Line::new(settings.cell_edge_color, settings.cell_edge_radius);
@@ -277,7 +336,7 @@ impl BoardView {
         self.draw_player_tokens(DrawMode::OnlySelf, controller, local_id, glyphs, c, g);
 
         // draw UI
-        self.draw_ui(controller, local_id, glyphs, c, g);
+        self.draw_ui(controller, local_id, anim_state, glyphs, c, g);
     }
 
     fn tile_extents(&self, controller: &BoardController, row: usize, col: usize) -> Extents {
@@ -314,7 +373,7 @@ impl BoardView {
     }
 
     fn draw_tiles<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: PlayerID,
+        &self, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         let board_tile_width = controller.board.width();
@@ -332,7 +391,7 @@ impl BoardView {
                     self.settings.background_color
                 };
                 let is_highlighted = controller.highlighted_tile == (j, i);
-                self.draw_tile(controller.board.get([i, j]), cell, color, is_highlighted, controller, _glyphs, c, g);
+                self.draw_tile(controller.board.get([i, j]), cell, color, is_highlighted, controller, local_id, anim_state, _glyphs, c, g);
             }
         }
     }
@@ -340,7 +399,8 @@ impl BoardView {
     #[allow(clippy::too_many_arguments)]
     fn draw_tile<G: Graphics, C>(
         &self, tile: &Tile, outer: Extents, background_color: Color, draw_border: bool,
-        controller: &BoardController, _glyphs: &mut C, c: &Context, g: &mut G,
+        controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
+        _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Rectangle, Polygon};
 
@@ -358,26 +418,23 @@ impl BoardView {
             let color = controller.players[&whose_target].color;
 
             // TODO tilt based on something so less reliant on color
-            // TODO animate stripes for current player
 
-            let markers = (0..=6).map(|x| cell_size * (f64::from(x) / 6.0));
-            let Extents { north, east, south, west } = outer;
-            // x increments
-            let x = markers.clone().map(|x| outer.west + x).collect::<Vec<_>>();
-            // y increments
-            let y = markers.clone().map(|y| outer.north + y).collect::<Vec<_>>();
+            let anim_offset = if tile.whose_target == Some(local_id) {
+                anim_state.target_stripe.pct_offset() * cell_size / 3.0
+            } else {
+                0.0
+            };
+
+            let diagonal = outer.diagonal();
+            let diagonals = (-4..4)
+                .map(|x| cell_size * f64::from(x) / 6.0 + anim_offset)
+                .map(|x| diagonal.clone() + x)
+                .map(|x| outer.clamp_diagonal(x));
+            let polys = diagonals.clone().step_by(2).zip(diagonals.skip(1).step_by(2));
 
             let poly = Polygon::new(color.into());
-            let stripes = [
-                [[x[1], north], [west, y[1]], [west, y[2]], [x[2], north]],
-                [[x[3], north], [west, y[3]], [west, y[4]], [x[4], north]],
-                [[x[5], north], [west, y[5]], [west, y[6]], [x[6], north]],
-                [[east, y[1]], [x[1], south], [x[2], south], [east, y[2]]],
-                [[east, y[3]], [x[3], south], [x[4], south], [east, y[4]]],
-                [[east, y[5]], [x[5], south], [east, south], [east, south]]
-            ];
-            for stripe in &stripes {
-                poly.draw(stripe, &c.draw_state, c.transform, g);
+            for stripe in polys {
+                poly.draw(&[stripe.0.ur, stripe.1.ur, stripe.1.ll, stripe.0.ll], &c.draw_state, c.transform, g);
             }
         }
 
@@ -556,14 +613,14 @@ impl BoardView {
     }
 
     fn draw_ui<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: PlayerID,
+        &self, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
         glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Transformed;
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
-            self.draw_tile(&controller.board.loose_tile, cell, self.settings.background_color, false, controller, glyphs, c, g);
+            self.draw_tile(&controller.board.loose_tile, cell, self.settings.background_color, false, controller, local_id, anim_state, glyphs, c, g);
         }
 
         // draw player target

@@ -8,6 +8,7 @@ use piston::input::{GenericEvent, Key};
 use rand::prelude::*;
 
 use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
+use crate::anim::AnimGlobalState;
 use crate::colors;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
 use crate::net::{self, Message, MessageCtrl};
@@ -47,6 +48,8 @@ pub struct GameController {
     ctrl: bool,
     /// Active player ID the last time the state was checked for a notification
     last_player: Option<PlayerID>,
+    /// Current animation state
+    pub anim_state: AnimGlobalState,
 }
 
 impl GameController {
@@ -60,6 +63,7 @@ impl GameController {
             shift: false,
             ctrl: false,
             last_player: None,
+            anim_state: AnimGlobalState::new(),
         }
     }
 
@@ -211,6 +215,10 @@ impl GameController {
     /// Handles events
     pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E) {
         use piston::input::Button;
+
+        if let Some(args) = e.update_args() {
+            self.anim_state.advance_by(args.dt);
+        }
 
         // TODO only do this when a turn actually ends
         if e.update_args().is_some() {

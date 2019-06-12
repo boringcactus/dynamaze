@@ -30,6 +30,7 @@ pub use crate::menu_view::GameView;
 pub use crate::player::{Player, PlayerID};
 pub use crate::tile::{Direction, Shape, Tile};
 
+mod anim;
 mod board;
 mod board_controller;
 mod board_view;

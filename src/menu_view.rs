@@ -48,7 +48,7 @@ impl GameView {
                         }
                     }
                     NetGameState::Active(ref board_controller) => {
-                        self.board_view.draw(board_controller, controller.player_id, glyphs, c, g);
+                        self.board_view.draw(board_controller, controller.player_id, &controller.anim_state, glyphs, c, g);
                     }
                     NetGameState::GameOver(_) => {}
                     NetGameState::Error(_) => {}
