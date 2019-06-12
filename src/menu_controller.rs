@@ -507,19 +507,19 @@ impl GameController {
                             defer!(self.randomize_color());
                         }
 
-                        if is_host {
-                            let new_local_button = widget::Button::new()
-                                .label("Add Local Player")
-                                .color(conrod_core::color::WHITE.with_alpha(0.4))
-                                .label_color(colors::DARK.into())
-                                .wh(BUTTON_DIMENSIONS)
-                                .align_right_of(ids.name_box)
-                                .down_from(ids.color_button, MARGIN)
-                                .set(ids.new_local_button, ui);
-                            for _press in new_local_button {
-                                defer!(self.new_local_player());
-                            }
+                        let new_local_button = widget::Button::new()
+                            .label("Add Local Player")
+                            .color(conrod_core::color::WHITE.with_alpha(0.4))
+                            .label_color(colors::DARK.into())
+                            .wh(BUTTON_DIMENSIONS)
+                            .align_right_of(ids.name_box)
+                            .down_from(ids.color_button, MARGIN)
+                            .set(ids.new_local_button, ui);
+                        for _press in new_local_button {
+                            defer!(self.new_local_player());
+                        }
 
+                        if is_host {
                             let start_button = widget::Button::new()
                                 .label("Begin Game")
                                 .color(conrod_core::color::WHITE.with_alpha(0.4))
