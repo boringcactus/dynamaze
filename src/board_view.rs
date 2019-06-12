@@ -58,8 +58,8 @@ impl Extents {
     }
 
     fn clamp_diagonal(&self, line: Diagonal) -> Diagonal {
-        let Diagonal { ll, ur } = line;
         // find equation of line as x + y = k (works for either point since slope assumed to be 1)
+        let ll = line.ll;
         let k = ll[0] + ll[1];
         // if k < west + north then too small so use northwest corner
         let (ll, ur) = if k < self.west + self.north {

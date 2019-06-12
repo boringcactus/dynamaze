@@ -55,10 +55,46 @@ pub struct GameController {
 impl GameController {
     /// Creates a new GameController
     pub fn new() -> GameController {
+        if crate::is_demo() {
+            return GameController::new_demo();
+        }
         let player_id = random();
         sound::SOUND.play_music(sound::Music::Menu);
         GameController {
             state: GameState::MainMenu,
+            player_id,
+            shift: false,
+            ctrl: false,
+            last_player: None,
+            anim_state: AnimGlobalState::new(),
+        }
+    }
+
+    fn new_demo() -> GameController {
+        let player_id = 1;
+        let settings = BoardSettings {
+            score_limit: 3,
+            width: 0,
+            height: 0,
+        };
+        let players = vec![
+            Player::new("Player 1".to_string(), colors::Color(0.2, 0.4, 0.6), player_id),
+            Player::new_child("Player 2".to_string(), colors::Color(0.4, 0.2, 0.6), 2, player_id),
+            Player::new_child("Player 3".to_string(), colors::Color(0.6, 0.2, 0.4), 3, player_id),
+            Player::new_child("Player 4".to_string(), colors::Color(0.4, 0.6, 0.2), 4, player_id),
+        ];
+        let board = BoardController::new(settings, players, player_id);
+        let state = NetGameState::Active(board);
+        let state = Arc::new(RwLock::new(state));
+        let (conn_str, sender) = net::run_dummy(state.clone());
+        let state = ConnectedState {
+            conn_str,
+            sender,
+            state,
+        };
+        let state = GameState::InGame(state);
+        GameController {
+            state,
             player_id,
             shift: false,
             ctrl: false,

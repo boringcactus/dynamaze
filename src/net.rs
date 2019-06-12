@@ -524,3 +524,32 @@ pub fn run_guest(host: &str, state: Arc<RwLock<NetGameState>>, player_id: Player
     });
     ui_thread_sender
 }
+
+pub fn run_dummy(state: Arc<RwLock<NetGameState>>) -> (String, mpsc::Sender<MessageCtrl>) {
+    let (send, recv) = mpsc::channel(20);
+    let ui_thread_sender = send.clone();
+    thread::spawn(move || {
+        let chain = future::ok(()).map(move |_| {
+            let mpsc_err_state = state.clone();
+            let (mut mpsc_kill, mpsc_killed) = mpsc::channel(1);
+            let mpsc_handler = recv
+                .inspect(move |data: &MessageCtrl| {
+                    if let MessageCtrl::Disconnect = data {
+                        println!("Got Disconnect");
+                        // ignore errors, because errors mean the channel was already closed
+                        mpsc_kill.try_send(()).unwrap_or(());
+                    }
+                })
+                .from_err::<MessageCodecError>()
+                .collect()
+                .map(|_| ())
+                .map_err(move |err| handle_error(err, mpsc_err_state));
+            let mpsc_handler_until_killed = mpsc_handler.select2(mpsc_killed.into_future())
+                .map(|_| ())
+                .map_err(|_| ());
+            tokio::spawn(mpsc_handler_until_killed);
+        });
+        tokio::run(chain);
+    });
+    ("N/A".to_string(), ui_thread_sender)
+}

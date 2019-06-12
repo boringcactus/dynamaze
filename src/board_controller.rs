@@ -54,7 +54,9 @@ impl BoardController {
         let width = settings.width;
         let height = settings.height;
         let mut player_ids: Vec<PlayerID> = player_list.iter().map(|p| p.id).collect();
-        player_ids.shuffle(&mut thread_rng());
+        if !crate::is_demo() {
+            player_ids.shuffle(&mut thread_rng());
+        }
         let players = player_list.into_iter().map(|p| (p.id, p)).collect();
         let board = Board::new(width, height, &players);
         let highlighted_tile = board.player_pos(player_ids[0]);

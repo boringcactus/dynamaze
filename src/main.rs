@@ -16,6 +16,8 @@ extern crate rand;
 extern crate serde;
 extern crate tokio;
 
+use std::env;
+
 use glutin_window::GlutinWindow;
 use opengl_graphics::{Filter, GlGraphics, GlyphCache, OpenGL, Texture, TextureSettings};
 use piston::event_loop::*;
@@ -165,4 +167,13 @@ fn main() {
             });
         }
     }
+}
+
+fn has_arg(arg: &str) -> bool {
+    env::args().any(|x| x == arg)
+}
+
+/// Checks to see if the game was launched with the `--demo` argument.
+pub fn is_demo() -> bool {
+    has_arg("--demo")
 }

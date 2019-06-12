@@ -66,6 +66,9 @@ fn valid_move(ind: (usize, usize), dir: Direction, (width, height): (usize, usiz
 impl Board {
     /// Creates a new board
     pub fn new(width: usize, height: usize, players: &BTreeMap<PlayerID, Player>) -> Board {
+        if crate::is_demo() {
+            return Self::new_demo(players);
+        }
         let mut rng = rand::thread_rng();
         // build tiles
         let loose_tile: Tile = rng.gen();
@@ -97,7 +100,7 @@ impl Board {
             }
         }
         // create tokens
-        let player_tokens = players.iter().enumerate().map(move |(i, (_, player))| {
+        let player_tokens = players.values().enumerate().map(move |(i, player)| {
             let position = match i {
                 0 => (0, 0),
                 1 => (height - 1, width - 1),
@@ -124,6 +127,83 @@ impl Board {
             result.assign_next_target(*player);
         }
         result
+    }
+
+    fn parse_tile(spec: char) -> Tile {
+        use Direction::*;
+        use Shape::*;
+        let (shape, dir) = match spec {
+            '│' => (I, North),
+            '─' => (I, East),
+            '└' => (L, North),
+            '┌' => (L, East),
+            '┐' => (L, South),
+            '┘' => (L, West),
+            '├' => (T, North),
+            '┬' => (T, East),
+            '┤' => (T, South),
+            '┴' => (T, West),
+            _ => panic!("Tried to parse an invalid tile spec")
+        };
+        Tile {
+            shape,
+            orientation: dir,
+            whose_target: None,
+        }
+    }
+
+    fn parse_board(spec: &str) -> Vec<Vec<Tile>> {
+        spec.split_whitespace()
+            .filter_map(|line| {
+                let result = line.trim();
+                if result.is_empty() {
+                    None
+                } else {
+                    Some(result)
+                }
+            }).map(|line| line.chars().map(Board::parse_tile).collect()).collect()
+    }
+
+    /// Creates a demo-friendly board
+    pub fn new_demo(players: &BTreeMap<PlayerID, Player>) -> Board {
+        let mut cells = Board::parse_board(r"
+            ┌┬┬┬┐
+            ├┬┤└┤
+            ├├┬┘┤
+            ├─┌┬┤
+            └┴┴┴┘
+        ");
+        let loose_tile = Board::parse_tile('├');
+        let loose_tile_position = (Direction::North, 0);
+        let height = cells.len();
+        let width = cells[0].len();
+        let players = players.values().collect::<Vec<_>>();
+        cells[2][3].whose_target = Some(players[0].id);
+        if players.len() > 1 {
+            cells[1][0].whose_target = Some(players[1].id);
+        }
+        if players.len() > 2 {
+            cells[3][4].whose_target = Some(players[2].id);
+        }
+        if players.len() > 3 {
+            cells[0][2].whose_target = Some(players[3].id);
+        }
+        let player_tokens = players.iter().enumerate().map(move |(i, player)| {
+            let position = match i {
+                0 => (0, 0),
+                1 => (height - 1, width - 1),
+                2 => (0, width - 1),
+                3 => (height - 1, 0),
+                _ => panic!("Too many players"),
+            };
+            (player.id, PlayerToken::new(player, position))
+        }).collect();
+        Board {
+            cells,
+            loose_tile,
+            loose_tile_position,
+            player_tokens,
+        }
     }
 
     /// Gets a cell from the board
