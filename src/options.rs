@@ -1,22 +1,22 @@
+extern crate serde_piecewise_default;
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard};
 
-#[derive(Clone, Serialize)]
+use serde::Deserialize;
+use serde_piecewise_default::DeserializePiecewiseDefault;
+
+#[derive(DeserializePiecewiseDefault, Clone, Serialize)]
 pub struct GameOptions {
     pub audio_level: u8,
 }
 
-#[derive(Deserialize)]
-struct MaybeGameOptions {
-    audio_level: Option<u8>,
-}
-
-impl Default for MaybeGameOptions {
+impl Default for GameOptions {
     fn default() -> Self {
-        MaybeGameOptions {
-            audio_level: None,
+        GameOptions {
+            audio_level: 50,
         }
     }
 }
@@ -45,14 +45,10 @@ lazy_static! {
 
 impl GameOptionsHandle {
     fn new() -> Self {
-        let maybe_options: MaybeGameOptions = fs::read(&*CONFIG_PATH)
+        let options = fs::read(&*CONFIG_PATH)
             .suppress_error()
             .and_then(|x| toml::from_slice(&x).suppress_error())
             .unwrap_or_default();
-        let audio_level = maybe_options.audio_level.unwrap_or(50);
-        let options = GameOptions {
-            audio_level,
-        };
         GameOptionsHandle {
             options: RwLock::new(options),
         }
