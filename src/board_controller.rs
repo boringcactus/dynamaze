@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use piston::input::GenericEvent;
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::{Board, BoardView, Direction, Player, PlayerID};
 

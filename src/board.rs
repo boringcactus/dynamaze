@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::{Direction, Player, PlayerID, Shape, Tile};
 

@@ -1,10 +1,12 @@
+extern crate rodio;
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use rodio::{self, *};
+use rodio::*;
 
 use crate::options;
 

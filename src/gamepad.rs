@@ -1,3 +1,5 @@
+extern crate gilrs;
+
 use gilrs::{Event as GilEvent, Gilrs};
 use gilrs::ev::{
     Axis as GilAxis,

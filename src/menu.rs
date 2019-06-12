@@ -2,6 +2,7 @@
 
 use std::sync::{Arc, RwLock};
 
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::{BoardController, Player, PlayerID};

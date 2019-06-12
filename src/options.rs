@@ -1,11 +1,12 @@
 extern crate serde_piecewise_default;
+extern crate toml;
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_piecewise_default::DeserializePiecewiseDefault;
 
 #[derive(DeserializePiecewiseDefault, Clone, Serialize)]

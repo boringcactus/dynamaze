@@ -1,4 +1,9 @@
 //! Networking logic
+extern crate bincode;
+extern crate bytes;
+extern crate futures;
+extern crate get_if_addrs;
+extern crate igd;
 
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -9,6 +14,7 @@ use std::thread;
 use bincode::{deserialize, serialize};
 use bytes::{BufMut, BytesMut};
 use futures::stream;
+use serde::{Deserialize, Serialize};
 use tokio::codec::{Decoder, Encoder, Framed};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;

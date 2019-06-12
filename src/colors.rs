@@ -4,6 +4,7 @@ use conrod_core::Color as Ccolor;
 use graphics::types::Color as Gcolor;
 use rand::distributions::{Distribution, Standard};
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Color(pub f32, pub f32, pub f32);

@@ -1,5 +1,7 @@
 //! Player information
 
+use serde::{Deserialize, Serialize};
+
 use crate::colors::Color;
 
 /// The ID assigned to a player

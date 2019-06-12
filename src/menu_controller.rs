@@ -1,4 +1,5 @@
 //! Menu / global state controller
+extern crate clipboard;
 
 use std::sync::{Arc, RwLock};
 
