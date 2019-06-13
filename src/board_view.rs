@@ -413,7 +413,6 @@ impl BoardView {
         Rectangle::new(background_color)
             .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, c.transform, g);
 
-        // TODO make this less goofy
         if let Some(whose_target) = tile.whose_target {
             let color = controller.players[&whose_target].color;
 

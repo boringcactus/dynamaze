@@ -1,4 +1,3 @@
-extern crate serde_piecewise_default;
 extern crate toml;
 
 use std::env;
@@ -7,9 +6,9 @@ use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard};
 
 use serde::{Deserialize, Serialize};
-use serde_piecewise_default::DeserializePiecewiseDefault;
 
-#[derive(DeserializePiecewiseDefault, Clone, Serialize)]
+#[derive(Deserialize, Clone, Serialize)]
+#[serde(default)]
 pub struct GameOptions {
     pub audio_level: u8,
 }
