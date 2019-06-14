@@ -10,6 +10,7 @@ use rand::prelude::*;
 use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
 use crate::anim::AnimGlobalState;
 use crate::colors;
+use crate::demo;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
 use crate::net::{self, Message, MessageCtrl};
 use crate::options;
@@ -43,11 +44,11 @@ pub struct GameController {
     /// Current player ID
     pub player_id: PlayerID,
     /// Whether or not the shift key is currently pressed
-    shift: bool,
+    pub shift: bool,
     /// Whether or not the ctrl key is currently pressed
-    ctrl: bool,
+    pub ctrl: bool,
     /// Active player ID the last time the state was checked for a notification
-    last_player: Option<PlayerID>,
+    pub last_player: Option<PlayerID>,
     /// Current animation state
     pub anim_state: AnimGlobalState,
 }
@@ -55,46 +56,13 @@ pub struct GameController {
 impl GameController {
     /// Creates a new GameController
     pub fn new() -> GameController {
-        if crate::is_demo() {
-            return GameController::new_demo();
+        if demo::is_demo() {
+            return demo::new_controller();
         }
         let player_id = random();
         sound::SOUND.play_music(sound::Music::Menu);
         GameController {
             state: GameState::MainMenu,
-            player_id,
-            shift: false,
-            ctrl: false,
-            last_player: None,
-            anim_state: AnimGlobalState::new(),
-        }
-    }
-
-    fn new_demo() -> GameController {
-        let player_id = 1;
-        let settings = BoardSettings {
-            score_limit: 3,
-            width: 0,
-            height: 0,
-        };
-        let players = vec![
-            Player::new("Player 1".to_string(), colors::Color(0.2, 0.4, 0.6), player_id),
-            Player::new_child("Player 2".to_string(), colors::Color(0.4, 0.2, 0.6), 2, player_id),
-            Player::new_child("Player 3".to_string(), colors::Color(0.6, 0.2, 0.4), 3, player_id),
-            Player::new_child("Player 4".to_string(), colors::Color(0.4, 0.6, 0.2), 4, player_id),
-        ];
-        let board = BoardController::new(settings, players, player_id);
-        let state = NetGameState::Active(board);
-        let state = Arc::new(RwLock::new(state));
-        let (conn_str, sender) = net::run_dummy(state.clone());
-        let state = ConnectedState {
-            conn_str,
-            sender,
-            state,
-        };
-        let state = GameState::InGame(state);
-        GameController {
-            state,
             player_id,
             shift: false,
             ctrl: false,

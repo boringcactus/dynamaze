@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Board, BoardView, Direction, Player, PlayerID};
 use crate::anim::{AnimGlobalState, RotateDir};
+use crate::demo;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TurnState {
@@ -55,7 +56,7 @@ impl BoardController {
         let width = settings.width;
         let height = settings.height;
         let mut player_ids: Vec<PlayerID> = player_list.iter().map(|p| p.id).collect();
-        if !crate::is_demo() {
+        if !demo::is_demo() {
             player_ids.shuffle(&mut thread_rng());
         }
         let players = player_list.into_iter().map(|p| (p.id, p)).collect();

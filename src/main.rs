@@ -37,6 +37,7 @@ mod board;
 mod board_controller;
 mod board_view;
 mod colors;
+mod demo;
 mod gamepad;
 mod menu;
 mod menu_controller;
@@ -169,11 +170,7 @@ fn main() {
     }
 }
 
-fn has_arg(arg: &str) -> bool {
+/// Checks to see if the game was launched with the given command-line argument
+pub fn has_arg(arg: &str) -> bool {
     env::args().any(|x| x == arg)
-}
-
-/// Checks to see if the game was launched with the `--demo` argument.
-pub fn is_demo() -> bool {
-    has_arg("--demo")
 }

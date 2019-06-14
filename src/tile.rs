@@ -1,5 +1,6 @@
 //! Tile logic
 
+use std::convert::TryFrom;
 use std::f64::consts;
 use std::ops;
 
@@ -165,5 +166,32 @@ impl Distribution<Tile> for Standard {
             orientation,
             whose_target: None,
         }
+    }
+}
+
+impl TryFrom<char> for Tile {
+    type Error = ();
+
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        use Direction::*;
+        use Shape::*;
+        let (shape, dir) = match value {
+            '│' => (I, North),
+            '─' => (I, East),
+            '└' => (L, North),
+            '┌' => (L, East),
+            '┐' => (L, South),
+            '┘' => (L, West),
+            '├' => (T, North),
+            '┬' => (T, East),
+            '┤' => (T, South),
+            '┴' => (T, West),
+            _ => return Err(())
+        };
+        Ok(Tile {
+            shape,
+            orientation: dir,
+            whose_target: None,
+        })
     }
 }
