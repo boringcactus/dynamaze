@@ -7,6 +7,7 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{Board, BoardView, Direction, Player, PlayerID};
+use crate::anim::{AnimGlobalState, RotateDir};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TurnState {
@@ -99,6 +100,15 @@ impl BoardController {
         old_loose_tile_position != new_loose_tile_position
     }
 
+    fn rotate_loose_tile(&mut self, dir: RotateDir, anim_state: &mut AnimGlobalState) -> bool {
+        self.board.loose_tile.rotate(match dir {
+            RotateDir::CW => Direction::East,
+            RotateDir::CCW => Direction::West,
+        });
+        anim_state.loose_rotate.reset(dir);
+        true
+    }
+
     /// Checks if the player whose turn it is lives with this player (equal to or child of)
     pub fn local_turn(&self, local_id: PlayerID) -> bool {
         let active_player = self.active_player();
@@ -108,7 +118,7 @@ impl BoardController {
     }
 
     /// Handles events, returns whether or not the state may have changed
-    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID) -> bool {
+    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID, anim_state: &mut AnimGlobalState) -> bool {
         use piston::input::{Button, MouseButton, Key};
 
         // never do anything if this player is not the active player
@@ -145,14 +155,8 @@ impl BoardController {
                     Key::Right => self.handle_insert_key_direction(Direction::East),
                     Key::Up => self.handle_insert_key_direction(Direction::North),
                     Key::Down => self.handle_insert_key_direction(Direction::South),
-                    Key::LShift => {
-                        self.board.loose_tile.rotate(Direction::West);
-                        true
-                    }
-                    Key::RShift => {
-                        self.board.loose_tile.rotate(Direction::East);
-                        true
-                    }
+                    Key::LShift => self.rotate_loose_tile(RotateDir::CCW, anim_state),
+                    Key::RShift => self.rotate_loose_tile(RotateDir::CW, anim_state),
                     Key::Space => {
                         self.insert_loose_tile();
                         true
@@ -181,7 +185,7 @@ impl BoardController {
                 // if the tile isn't aligned with a guide, or the button wasn't left...
                 if button != MouseButton::Left {
                     // rotate the loose tile
-                    self.board.loose_tile.rotate(Direction::East);
+                    self.rotate_loose_tile(RotateDir::CW, anim_state);
                 } else {
                     // otherwise, insert the tile
                     self.insert_loose_tile();

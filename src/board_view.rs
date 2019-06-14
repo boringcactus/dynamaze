@@ -98,6 +98,20 @@ impl ops::Sub<f64> for Extents {
     }
 }
 
+impl ops::Sub<[f64; 2]> for Extents {
+    type Output = Extents;
+
+    fn sub(self, rhs: [f64; 2]) -> Self::Output {
+        let [x, y] = rhs;
+        Extents {
+            north: self.north - y,
+            south: self.south - y,
+            east: self.east - x,
+            west: self.west - x,
+        }
+    }
+}
+
 impl PartialEq<Extents> for [f64; 2] {
     fn eq(&self, other: &Extents) -> bool {
         self.partial_cmp(other) == Some(cmp::Ordering::Equal)
@@ -391,7 +405,11 @@ impl BoardView {
                     self.settings.background_color
                 };
                 let is_highlighted = controller.highlighted_tile == (j, i);
-                self.draw_tile(controller.board.get([i, j]), cell, color, is_highlighted, controller, local_id, anim_state, _glyphs, c, g);
+                self.draw_tile(
+                    controller.board.get([i, j]), cell, color,
+                    is_highlighted, false, controller, local_id, anim_state,
+                    _glyphs, c, g,
+                );
             }
         }
     }
@@ -399,19 +417,25 @@ impl BoardView {
     #[allow(clippy::too_many_arguments)]
     fn draw_tile<G: Graphics, C>(
         &self, tile: &Tile, outer: Extents, background_color: Color, draw_border: bool,
-        controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
+        is_loose: bool, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
-        use graphics::{Rectangle, Polygon};
+        use graphics::{Rectangle, Polygon, Transformed};
 
         let settings = &self.settings;
 
         let (cell_size, _, _) = self.tile_padding(controller);
         let wall_width = cell_size * settings.wall_width;
+
+        let transform = c.transform
+            .trans_pos(outer.center())
+            .rot_rad(if is_loose { anim_state.loose_rotate.angle } else { 0.0 });
+
+        let outer = outer.clone() - outer.center();
         let inner = outer.clone() - wall_width;
 
         Rectangle::new(background_color)
-            .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, c.transform, g);
+            .draw([outer.west, outer.north, cell_size, cell_size], &c.draw_state, transform, g);
 
         if let Some(whose_target) = tile.whose_target {
             let color = controller.players[&whose_target].color;
@@ -433,15 +457,15 @@ impl BoardView {
 
             let poly = Polygon::new(color.into());
             for stripe in polys {
-                poly.draw(&[stripe.0.ur, stripe.1.ur, stripe.1.ll, stripe.0.ll], &c.draw_state, c.transform, g);
+                poly.draw(&[stripe.0.ur, stripe.1.ur, stripe.1.ll, stripe.0.ll], &c.draw_state, transform, g);
             }
         }
 
         let wall_rect = Rectangle::new(settings.wall_color);
-        wall_rect.draw([outer.west, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
-        wall_rect.draw([inner.east, outer.north, wall_width, wall_width], &c.draw_state, c.transform, g);
-        wall_rect.draw([outer.west, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
-        wall_rect.draw([inner.east, inner.south, wall_width, wall_width], &c.draw_state, c.transform, g);
+        wall_rect.draw([outer.west, outer.north, wall_width, wall_width], &c.draw_state, transform, g);
+        wall_rect.draw([inner.east, outer.north, wall_width, wall_width], &c.draw_state, transform, g);
+        wall_rect.draw([outer.west, inner.south, wall_width, wall_width], &c.draw_state, transform, g);
+        wall_rect.draw([inner.east, inner.south, wall_width, wall_width], &c.draw_state, transform, g);
         let walled_directions = tile.walls();
         for d in walled_directions {
             let rect = match d {
@@ -450,17 +474,17 @@ impl BoardView {
                 Direction::East => [inner.east, outer.north, wall_width, cell_size],
                 Direction::West => [outer.west, outer.north, wall_width, cell_size],
             };
-            wall_rect.draw(rect, &c.draw_state, c.transform, g);
+            wall_rect.draw(rect, &c.draw_state, transform, g);
         }
 
         if draw_border {
             let border_width = wall_width / 3.0;
             let inner = outer.clone() - border_width;
             let border_rect = Rectangle::new(settings.text_color);
-            border_rect.draw([outer.west, outer.north, cell_size, border_width], &c.draw_state, c.transform, g);
-            border_rect.draw([outer.west, inner.south, cell_size, border_width], &c.draw_state, c.transform, g);
-            border_rect.draw([inner.east, outer.north, border_width, cell_size], &c.draw_state, c.transform, g);
-            border_rect.draw([outer.west, outer.north, border_width, cell_size], &c.draw_state, c.transform, g);
+            border_rect.draw([outer.west, outer.north, cell_size, border_width], &c.draw_state, transform, g);
+            border_rect.draw([outer.west, inner.south, cell_size, border_width], &c.draw_state, transform, g);
+            border_rect.draw([inner.east, outer.north, border_width, cell_size], &c.draw_state, transform, g);
+            border_rect.draw([outer.west, outer.north, border_width, cell_size], &c.draw_state, transform, g);
         }
     }
 
@@ -619,7 +643,11 @@ impl BoardView {
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
-            self.draw_tile(&controller.board.loose_tile, cell, self.settings.background_color, false, controller, local_id, anim_state, glyphs, c, g);
+            self.draw_tile(
+                &controller.board.loose_tile, cell, self.settings.background_color,
+                false, true, controller, local_id, anim_state,
+                glyphs, c, g,
+            );
         }
 
         // draw player target

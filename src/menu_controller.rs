@@ -318,7 +318,7 @@ impl GameController {
                             (false, None, None)
                         }
                         NetGameState::Active(ref mut board_controller) => {
-                            let state_dirty = board_controller.event(&view.board_view, e, self.player_id);
+                            let state_dirty = board_controller.event(&view.board_view, e, self.player_id, &mut self.anim_state);
                             if state_dirty {
                                 if let Some(winner) = board_controller.winner() {
                                     let info = GameOverInfo {
