@@ -53,14 +53,16 @@ pub fn new_controller() -> GameController {
 /// Creates a demo-friendly board
 pub fn new_board(players: &BTreeMap<PlayerID, Player>) -> Board {
     let mut cells = Board::parse_board(r"
-            ┌┬┬┬┐
-            ├┬┤└┤
-            ├├┬┘┤
-            ├─┌┬┤
-            └┴┴┴┘
+            ┌┬─┘┐─┐
+            ┐│┬┴┌├┘
+            │└┘└┤┌┤
+            ┌└─┴┤├┐
+            └││─┘─┐
+            ┌┌└─┤┘┤
+            └─┘┬└┬┘
         ");
-    let loose_tile = '├'.try_into().unwrap();
-    let loose_tile_position = (Direction::North, 0);
+    let loose_tile = '┤'.try_into().unwrap();
+    let loose_tile_position = (Direction::North, 1);
     let height = cells.len();
     let width = cells[0].len();
     let players = players.values().collect::<Vec<_>>();
