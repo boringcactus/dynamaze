@@ -616,6 +616,7 @@ impl BoardView {
         pos < &cell
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_player_tokens<G: Graphics, C>(
         &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
         _glyphs: &mut C, c: &Context, g: &mut G,
@@ -669,7 +670,7 @@ impl BoardView {
                 let delta = [0.0, anim_state.loose_insert.distance_left * cell_size] * anim_state.loose_insert.offset_dir;
                 c.trans_pos(delta)
             } else {
-                c.clone()
+                *c
             };
             self.draw_tile(
                 &controller.board.loose_tile, cell, self.settings.background_color,
