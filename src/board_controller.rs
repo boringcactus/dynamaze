@@ -158,10 +158,7 @@ impl BoardController {
                     Key::Down => self.handle_insert_key_direction(Direction::South),
                     Key::LShift => self.rotate_loose_tile(RotateDir::CCW, anim_state),
                     Key::RShift => self.rotate_loose_tile(RotateDir::CW, anim_state),
-                    Key::Space => {
-                        self.insert_loose_tile();
-                        true
-                    }
+                    Key::Space => self.insert_loose_tile(anim_state),
                     _ => false
                 };
                 dirty = dirty || newly_dirty;
@@ -189,7 +186,7 @@ impl BoardController {
                     self.rotate_loose_tile(RotateDir::CW, anim_state);
                 } else {
                     // otherwise, insert the tile
-                    self.insert_loose_tile();
+                    self.insert_loose_tile(anim_state);
                 }
                 dirty = true;
             } else if let Some(pos) = view.in_tile(&self.cursor_pos, self) {
@@ -223,10 +220,11 @@ impl BoardController {
         false
     }
 
-    fn insert_loose_tile(&mut self) {
-        self.board.insert_loose_tile();
+    fn insert_loose_tile(&mut self, anim: &mut AnimGlobalState) -> bool {
+        self.board.insert_loose_tile(anim);
         // advance turn state
         self.turn_state = TurnState::MoveToken;
+        true
     }
 
     fn handle_insert_key_direction(&mut self, move_dir: Direction) -> bool {

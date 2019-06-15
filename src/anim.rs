@@ -1,7 +1,6 @@
 use std::f64::consts::FRAC_PI_2;
 
-const TARGET_STRIPE_LENGTH: f64 = 2.0;
-const LOOSE_ROTATE_LENGTH: f64 = 0.3;
+use crate::Direction;
 
 /// Tracks state of the target stripe animation
 pub struct TargetStripeState {
@@ -9,6 +8,8 @@ pub struct TargetStripeState {
 }
 
 impl TargetStripeState {
+    const LENGTH: f64 = 2.0;
+
     fn new() -> TargetStripeState {
         TargetStripeState {
             offset: 0.0,
@@ -16,11 +17,11 @@ impl TargetStripeState {
     }
 
     fn advance_by(&mut self, ticks: f64) {
-        self.offset = (self.offset + ticks) % TARGET_STRIPE_LENGTH;
+        self.offset = (self.offset + ticks) % Self::LENGTH;
     }
 
     pub fn pct_offset(&self) -> f64 {
-        self.offset / TARGET_STRIPE_LENGTH
+        self.offset / Self::LENGTH
     }
 }
 
@@ -38,6 +39,8 @@ pub struct LooseRotateState {
 }
 
 impl LooseRotateState {
+    const LENGTH: f64 = 0.3;
+
     fn new() -> LooseRotateState {
         LooseRotateState {
             angle: 0.0,
@@ -55,7 +58,7 @@ impl LooseRotateState {
         if self.angle == 0.0 {
             return;
         }
-        let delta = FRAC_PI_2 / LOOSE_ROTATE_LENGTH;
+        let delta = FRAC_PI_2 / Self::LENGTH;
         let (delta, clamp): (f64, fn(f64, f64) -> f64) = if self.angle.is_sign_positive() {
             (-delta, f64::max)
         } else {
@@ -65,10 +68,69 @@ impl LooseRotateState {
     }
 }
 
+/// Tracks state of loose tile insert animation
+pub struct LooseInsertState {
+    /// Direction in which the tiles are currently offset
+    /// (same as the edge on which the loose tile started)
+    pub offset_dir: Direction,
+    /// Fraction of a tile remaining in the animation
+    pub distance_left: f64,
+    /// Row/column of the offset tiles
+    coordinate: usize,
+}
+
+impl LooseInsertState {
+    const LENGTH: f64 = 1.0;
+
+    fn new() -> LooseInsertState {
+        LooseInsertState {
+            offset_dir: Direction::North,
+            distance_left: 0.0,
+            coordinate: 0,
+        }
+    }
+
+    pub fn reset(&mut self, dir: Direction, coord: usize) {
+        self.offset_dir = dir;
+        self.distance_left = 1.0;
+        self.coordinate = coord;
+    }
+
+    fn advance_by(&mut self, ticks: f64) {
+        if self.distance_left == 0.0 {
+            return;
+        }
+        self.distance_left = (self.distance_left - ticks / Self::LENGTH).max(0.0);
+    }
+
+    pub fn applies_to_pos(&self, (row, col): (usize, usize)) -> bool {
+        if self.distance_left == 0.0 {
+            return false;
+        }
+        let should_be_coord = match self.offset_dir {
+            Direction::North | Direction::South => col,
+            Direction::East | Direction::West => row,
+        };
+        should_be_coord == self.coordinate
+    }
+
+    pub fn applies_to_loose(&self, (dir, guide_idx): (Direction, usize)) -> bool {
+        if self.distance_left == 0.0 {
+            return false;
+        }
+        if dir == self.offset_dir || dir == self.offset_dir * Direction::South {
+            self.coordinate == 2 * guide_idx + 1
+        } else {
+            false
+        }
+    }
+}
+
 /// Tracks state of all currently running animations
 pub struct AnimGlobalState {
     pub target_stripe: TargetStripeState,
     pub loose_rotate: LooseRotateState,
+    pub loose_insert: LooseInsertState,
 }
 
 impl AnimGlobalState {
@@ -76,12 +138,14 @@ impl AnimGlobalState {
         AnimGlobalState {
             target_stripe: TargetStripeState::new(),
             loose_rotate: LooseRotateState::new(),
+            loose_insert: LooseInsertState::new(),
         }
     }
 
     pub fn advance_by(&mut self, ticks: f64) {
         self.target_stripe.advance_by(ticks);
         self.loose_rotate.advance_by(ticks);
+        self.loose_insert.advance_by(ticks);
     }
 }
 

@@ -344,10 +344,10 @@ impl BoardView {
         self.draw_insert_guides(controller, local_id, glyphs, c, g);
 
         // draw player tokens
-        self.draw_player_tokens(DrawMode::All, controller, local_id, glyphs, c, g);
+        self.draw_player_tokens(DrawMode::All, controller, local_id, anim_state, glyphs, c, g);
 
         // draw own token on top of others
-        self.draw_player_tokens(DrawMode::OnlySelf, controller, local_id, glyphs, c, g);
+        self.draw_player_tokens(DrawMode::OnlySelf, controller, local_id, anim_state, glyphs, c, g);
 
         // draw UI
         self.draw_ui(controller, local_id, anim_state, glyphs, c, g);
@@ -390,11 +390,18 @@ impl BoardView {
         &self, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
+        use graphics::Transformed;
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
 
+        let (cell_size, _, _) = self.tile_padding(controller);
         let current_player_pos = controller.board.player_pos(local_id);
         let reachable = controller.board.reachable_coords(current_player_pos);
+
+        let offset_c = {
+            let delta = [0.0, anim_state.loose_insert.distance_left * cell_size] * anim_state.loose_insert.offset_dir;
+            c.trans_pos(delta)
+        };
 
         for j in 0..board_tile_height {
             for i in 0..board_tile_width {
@@ -405,6 +412,12 @@ impl BoardView {
                     self.settings.background_color
                 };
                 let is_highlighted = controller.highlighted_tile == (j, i);
+                // TODO does this belong here or in draw_tile with everything else
+                let c = if anim_state.loose_insert.applies_to_pos((j, i)) {
+                    &offset_c
+                } else {
+                    c
+                };
                 self.draw_tile(
                     controller.board.get([i, j]), cell, color,
                     is_highlighted, false, controller, local_id, anim_state,
@@ -604,10 +617,10 @@ impl BoardView {
     }
 
     fn draw_player_tokens<G: Graphics, C>(
-        &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID,
+        &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
-        use graphics::Ellipse;
+        use graphics::{Ellipse, Transformed};
 
         let settings = &self.settings;
 
@@ -623,13 +636,20 @@ impl BoardView {
             let tile = self.tile_extents(controller, row, col);
             let token_rect = tile - wall_width;
 
+            let transform = if anim_state.loose_insert.applies_to_pos((row, col)) {
+                let delta = [0.0, anim_state.loose_insert.distance_left * cell_size] * anim_state.loose_insert.offset_dir;
+                c.transform.trans_pos(delta)
+            } else {
+                c.transform
+            };
+
             let should = mode == DrawMode::All || token.player_id == local_id;
             if should {
                 let token_ellipse = Ellipse::new(player.color.into());
-                token_ellipse.draw(token_rect.clone(), &c.draw_state, c.transform, g);
+                token_ellipse.draw(token_rect.clone(), &c.draw_state, transform, g);
                 if token.player_id == local_id {
                     let token_core = Ellipse::new([0.0, 0.0, 0.0, 1.0]);
-                    token_core.draw(token_rect - wall_width / 2.0, &c.draw_state, c.transform, g);
+                    token_core.draw(token_rect - wall_width / 2.0, &c.draw_state, transform, g);
                 }
             }
         }
@@ -640,19 +660,26 @@ impl BoardView {
         glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Transformed;
+        let (cell_size, _, _) = self.tile_padding(controller);
+
         // draw loose tile
         {
             let cell = self.loose_tile_extents(controller);
+            let c = if anim_state.loose_insert.applies_to_loose(controller.board.loose_tile_position) {
+                let delta = [0.0, anim_state.loose_insert.distance_left * cell_size] * anim_state.loose_insert.offset_dir;
+                c.trans_pos(delta)
+            } else {
+                c.clone()
+            };
             self.draw_tile(
                 &controller.board.loose_tile, cell, self.settings.background_color,
                 false, true, controller, local_id, anim_state,
-                glyphs, c, g,
+                glyphs, &c, g,
             );
         }
 
         // draw player target
         {
-            let (cell_size, _, _) = self.tile_padding(controller);
             let (south_panel, _) = self.ui_extents();
             let my_turn = controller.local_turn(local_id);
             let whose_turn = controller.active_player();
