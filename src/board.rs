@@ -282,7 +282,7 @@ impl Board {
         let all_targets = (0..self.height())
             .flat_map(|row| (0..self.width()).map(move |col| (row, col)))
             .collect::<HashSet<_>>();
-        let banned_targets = [(old_row, old_col)].into_iter()
+        let banned_targets = [(old_row, old_col)].iter()
             .chain(all_targets.iter().filter(|p| self.get([p.1, p.0]).whose_target.is_some()))
             .cloned()
             .collect::<HashSet<_>>();

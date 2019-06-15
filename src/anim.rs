@@ -84,3 +84,9 @@ impl AnimGlobalState {
         self.loose_rotate.advance_by(ticks);
     }
 }
+
+impl Default for AnimGlobalState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
