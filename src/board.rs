@@ -216,11 +216,9 @@ impl Board {
         self.player_tokens.get_mut(&id).expect("No token for player with given ID").position = pos;
     }
 
-    /// Gets all the coordinates reachable from the given (row, col)
-    pub fn reachable_coords(&self, from: (usize, usize)) -> HashSet<(usize, usize)> {
+    fn add_reachable_coords(&self, from: (usize, usize), result: &mut HashSet<(usize, usize)>) {
         let dimensions = (self.width(), self.height());
         // result contains everything seen, frontier contains only things not yet scanned
-        let mut result = HashSet::new();
         result.insert(from);
         let mut frontier = vec![from];
         // while frontier is nonempty...
@@ -243,24 +241,60 @@ impl Board {
                 }
             }
         }
+    }
+
+    /// Gets all the coordinates reachable from the given (row, col)
+    pub fn reachable_coords(&self, from: (usize, usize)) -> HashSet<(usize, usize)> {
+        let mut result = HashSet::new();
+        self.add_reachable_coords(from, &mut result);
+        result
+    }
+
+    /// Gets all the coordinates reachable from the given (row, col) or one tile nearby
+    pub fn nearly_reachable_coords(&self, from: (usize, usize)) -> HashSet<(usize, usize)> {
+        let dimensions = (self.width(), self.height());
+        let mut result = HashSet::new();
+        // grab all the directly reachable coordinates
+        self.add_reachable_coords(from, &mut result);
+        let direct_result = result.clone();
+        // for everything already found...
+        for pos in direct_result {
+            // for every direction...
+            for dir in Direction::all() {
+                // if it doesn't fall off the board...
+                if valid_move(pos, *dir, dimensions) {
+                    // find the connecting tile
+                    let next_pos = pos + *dir;
+                    // if we've never seen that location before...
+                    if !result.contains(&next_pos) {
+                        // run that search from there
+                        self.add_reachable_coords(next_pos, &mut result);
+                    }
+                }
+            }
+        }
         result
     }
 
     fn assign_next_target(&mut self, player_id: PlayerID) {
         let mut rng = rand::thread_rng();
         let (old_row, old_col) = self.player_tokens[&player_id].position;
-        // TODO never give easy targets
-        loop {
-            let row = rng.gen_range(0, self.height());
-            let col = rng.gen_range(0, self.width());
-            if (row, col) == (old_row, old_col) {
-                continue;
-            }
-            if self.cells[row][col].whose_target.is_none() {
-                self.cells[row][col].whose_target = Some(player_id);
-                break;
-            }
-        }
+        let all_targets = (0..self.height())
+            .flat_map(|row| (0..self.width()).map(move |col| (row, col)))
+            .collect::<HashSet<_>>();
+        let banned_targets = [(old_row, old_col)].into_iter()
+            .chain(all_targets.iter().filter(|p| self.get([p.1, p.0]).whose_target.is_some()))
+            .cloned()
+            .collect::<HashSet<_>>();
+        let all_targets = &all_targets - &banned_targets;
+        let easy_targets = self.nearly_reachable_coords((old_row, old_col));
+        let valid_targets = if all_targets.len() > easy_targets.len() {
+            &all_targets - &easy_targets
+        } else {
+            all_targets
+        };
+        let (row, col) = valid_targets.into_iter().choose(&mut rng).expect("Failed to choose next target");
+        self.cells[row][col].whose_target = Some(player_id);
     }
 
     /// Indicates that the given player has reached their target

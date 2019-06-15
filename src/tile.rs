@@ -33,6 +33,11 @@ impl Direction {
             Direction::West => consts::PI * 3.0 / 2.0,
         }
     }
+
+    /// Gets a list of all Directions
+    pub fn all() -> &'static [Direction] {
+        &[Direction::North, Direction::East, Direction::South, Direction::West]
+    }
 }
 
 impl ops::Add<Direction> for (usize, usize) {
