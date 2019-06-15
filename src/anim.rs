@@ -39,7 +39,7 @@ pub struct LooseRotateState {
 }
 
 impl LooseRotateState {
-    const LENGTH: f64 = 0.3;
+    const LENGTH: f64 = 0.25;
 
     fn new() -> LooseRotateState {
         LooseRotateState {
@@ -80,7 +80,7 @@ pub struct LooseInsertState {
 }
 
 impl LooseInsertState {
-    const LENGTH: f64 = 1.0;
+    const LENGTH: f64 = 0.25;
 
     fn new() -> LooseInsertState {
         LooseInsertState {
