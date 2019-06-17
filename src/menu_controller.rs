@@ -379,7 +379,7 @@ impl GameController {
                 }
 
                 let options_button = widget::Button::new()
-                    .label("Options")
+                    .label("Option")
                     .wh(BUTTON_DIMENSIONS)
                     .color(conrod_core::color::WHITE.with_alpha(0.4))
                     .label_color(colors::DARK.into())
