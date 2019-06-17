@@ -74,20 +74,12 @@ impl GameController {
     fn host(&mut self) {
         let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
         let state = Arc::new(RwLock::new(state));
-        match net::run_host(state.clone(), self.player_id) {
-            Ok((conn_str, sender)) => {
-                let conn_state = ConnectedState {
-                    state,
-                    sender,
-                    conn_str,
-                };
-                self.state = GameState::InGame(conn_state);
-            }
-            Err(e) => {
-                let e = format!("{}", e);
-                self.state = GameState::HardError(e);
-            }
-        }
+        let sender = net::run_host(state.clone(), self.player_id);
+        let conn_state = ConnectedState {
+            state,
+            sender,
+        };
+        self.state = GameState::InGame(conn_state);
     }
 
     fn connect(&mut self) {
@@ -108,7 +100,6 @@ impl GameController {
             let conn_state = ConnectedState {
                 sender,
                 state,
-                conn_str: address.clone(),
             };
             self.state = GameState::InGame(conn_state);
         }
@@ -453,9 +444,17 @@ impl GameController {
                 match *state {
                     NetGameState::Lobby(ref info) => {
                         let status = if is_host {
-                            format!("Hosting lobby: {}", conn_state.conn_str)
+                            let local_piece = match info.local_addr {
+                                Ok(ref addr) => format!("Local: {}", addr),
+                                Err(ref err) => format!("Local on port {} - error: {}", crate::net::LOCAL_PORT, err),
+                            };
+                            let remote_piece = match info.remote_addr {
+                                Ok(ref addr) => format!("Remote: {}", addr),
+                                Err(ref err) => format!("Auto port forwarding failed: {}", err),
+                            };
+                            format!("Hosting lobby\n{}\n{}", local_piece, remote_piece)
                         } else {
-                            "Connected to lobby".to_owned()
+                            "Connected to lobby".into()
                         };
                         widget::Text::new(&status)
                             .color(colors::DARK.into())

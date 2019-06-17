@@ -1,5 +1,6 @@
 //! Game menu logic
 
+use std::net::SocketAddrV4;
 use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,10 @@ pub struct LobbyInfo {
     pub host: Player,
     /// Currently connected players, not including host
     pub guests: Vec<Player>,
+    /// Local socket, theoretically usable on LAN, may be Err("Loading...") if loading
+    pub local_addr: Result<SocketAddrV4, String>,
+    /// Remote socket, theoretically usable across Internet, may be Err("Loading...") if loading
+    pub remote_addr: Result<SocketAddrV4, String>,
 }
 
 impl LobbyInfo {
@@ -28,6 +33,8 @@ impl LobbyInfo {
             name: "DynaMaze Lobby".into(),
             host: Player::new("Host McHostface".into(), Color(0.7, 0.2, 0.7), player_id),
             guests: vec![],
+            local_addr: Err("Loading...".into()),
+            remote_addr: Err("Loading...".into()),
         }
     }
 
@@ -112,8 +119,6 @@ pub struct ConnectedState {
     pub sender: mpsc::Sender<MessageCtrl>,
     /// Game state
     pub state: Arc<RwLock<NetGameState>>,
-    /// Connection string (only shown on host)
-    pub conn_str: String,
 }
 
 pub enum GameState {

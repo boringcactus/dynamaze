@@ -252,6 +252,8 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
     None
 }
 
+pub const LOCAL_PORT: u16 = 12543;
+
 mod nat {
     use std::error::Error;
     use std::fmt::{Display, Formatter};
@@ -266,7 +268,6 @@ mod nat {
         Io(std::io::Error),
         IgdSearch(igd::SearchError),
         IgdAdd(igd::AddAnyPortError),
-        Poison(String),
         NoneFound,
     }
 
@@ -288,12 +289,6 @@ mod nat {
         }
     }
 
-    impl<T> From<std::sync::PoisonError<T>> for NatError {
-        fn from(e: std::sync::PoisonError<T>) -> Self {
-            NatError::Poison(format!("{}", e))
-        }
-    }
-
     impl Error for NatError {}
 
     impl Display for NatError {
@@ -302,7 +297,6 @@ mod nat {
                 NatError::Io(e) => e.fmt(f),
                 NatError::IgdSearch(e) => e.fmt(f),
                 NatError::IgdAdd(e) => e.fmt(f),
-                NatError::Poison(e) => e.fmt(f),
                 NatError::NoneFound => f.write_str("Could not get local IP"),
             }
         }
@@ -331,27 +325,45 @@ mod nat {
         Err(NatError::NoneFound)
     }
 
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Debug)]
     pub struct ServerInfo {
-        pub local_port: u16,
-        pub remote_addr: SocketAddrV4,
+        pub local_addr: Result<SocketAddrV4, String>,
+        pub remote_addr: Result<SocketAddrV4, String>,
     }
 
-    fn fetch_info() -> Result<ServerInfo, NatError> {
-        let local_port = 12543;
+    fn fetch_local_addr(gateway: &igd::Gateway) -> Result<SocketAddrV4, NatError> {
+        let local_addr = get_local_addr(gateway)?;
+        let local_addr = SocketAddrV4::new(local_addr, super::LOCAL_PORT);
+        Ok(local_addr)
+    }
 
-        let gateway = igd::search_gateway(Default::default())?;
-        let local_addr = get_local_addr(&gateway)?;
-        let local_addr = SocketAddrV4::new(local_addr, local_port);
-
+    fn fetch_remote_addr(gateway: &igd::Gateway, local_addr: SocketAddrV4) -> Result<SocketAddrV4, NatError> {
         let protocol = igd::PortMappingProtocol::TCP;
         let lease_duration = 60 * 60; // 1 hour, in seconds
         let description = "DynaMaze";
         let remote_addr = gateway.get_any_address(protocol, local_addr, lease_duration, description)?;
-        Ok(ServerInfo {
-            local_port,
+        Ok(remote_addr)
+    }
+
+    fn fetch_info() -> ServerInfo {
+        let stringify_err = |err: NatError| format!("{}", err);
+        let gateway = match igd::search_gateway(Default::default()) {
+            Ok(x) => x,
+            Err(e) => {
+                let e = format!("{}", e);
+                return ServerInfo {
+                    local_addr: Err(e.clone()),
+                    remote_addr: Err(e),
+                }
+            }
+        };
+        let local_addr = fetch_local_addr(&gateway).map_err(stringify_err);
+        let remote_addr = local_addr.clone().and_then(|a|
+            fetch_remote_addr(&gateway, a).map_err(stringify_err));
+        ServerInfo {
+            local_addr,
             remote_addr,
-        })
+        }
     }
 
     pub struct ServerInfoHandle {
@@ -359,14 +371,14 @@ mod nat {
     }
 
     impl ServerInfoHandle {
-        pub fn get(&self) -> Result<ServerInfo, NatError> {
-            if let Some(x) = *(self.info.read()?) {
-                return Ok(x);
+        pub fn get(&self) -> ServerInfo {
+            if let Some(ref x) = *(self.info.read().expect("Failed to poke server info")) {
+                return x.clone();
             }
-            let result = fetch_info()?;
-            let mut info = self.info.write()?;
-            *info = Some(result);
-            Ok(result)
+            let result = fetch_info();
+            let mut info = self.info.write().expect("Failed to poke server info");
+            *info = Some(result.clone());
+            result
         }
     }
 
@@ -384,13 +396,13 @@ fn handle_error<T: Error>(err: T, state: Arc<RwLock<NetGameState>>) {
     *state = NetGameState::Error(format!("{}", err));
 }
 
-pub fn run_host(state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Result<(String, mpsc::Sender<MessageCtrl>), nat::NatError> {
-    let conn_info: nat::ServerInfo = nat::HANDLE.get()?;
+pub fn run_host(state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
     let (send, recv) = mpsc::channel(20);
     let ui_thread_sender = send.clone();
     thread::spawn(move || {
         let chain = future::ok(()).map(move |_| {
-            let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), conn_info.local_port);
+            let conn_info: nat::ServerInfo = nat::HANDLE.get();
+            let addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), LOCAL_PORT);
             let server = match TcpListener::bind(&addr) {
                 Ok(x) => x,
                 Err(e) => {
@@ -398,6 +410,13 @@ pub fn run_host(state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Result
                     return;
                 }
             };
+            {
+                let mut state = state.write().expect("Failed to touch state");
+                if let NetGameState::Lobby(ref mut info) = *state {
+                    info.local_addr = conn_info.local_addr;
+                    info.remote_addr = conn_info.remote_addr;
+                }
+            }
             let send = send.clone();
             let err_state = state.clone();
             let mpsc_err_state = state.clone();
@@ -463,7 +482,7 @@ pub fn run_host(state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Result
         });
         tokio::run(chain);
     });
-    Ok((format!("{}", conn_info.remote_addr), ui_thread_sender))
+    ui_thread_sender
 }
 
 pub fn run_guest(host: &str, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> mpsc::Sender<MessageCtrl> {
@@ -525,7 +544,7 @@ pub fn run_guest(host: &str, state: Arc<RwLock<NetGameState>>, player_id: Player
     ui_thread_sender
 }
 
-pub fn run_dummy(state: Arc<RwLock<NetGameState>>) -> (String, mpsc::Sender<MessageCtrl>) {
+pub fn run_dummy(state: Arc<RwLock<NetGameState>>) -> mpsc::Sender<MessageCtrl> {
     let (send, recv) = mpsc::channel(20);
     let ui_thread_sender = send.clone();
     thread::spawn(move || {
@@ -551,5 +570,5 @@ pub fn run_dummy(state: Arc<RwLock<NetGameState>>) -> (String, mpsc::Sender<Mess
         });
         tokio::run(chain);
     });
-    ("N/A".to_string(), ui_thread_sender)
+    ui_thread_sender
 }

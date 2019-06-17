@@ -33,9 +33,8 @@ pub fn new_controller() -> GameController {
     let board = BoardController::new(settings, players, player_id);
     let state = NetGameState::Active(board);
     let state = Arc::new(RwLock::new(state));
-    let (conn_str, sender) = net::run_dummy(state.clone());
+    let sender = net::run_dummy(state.clone());
     let state = ConnectedState {
-        conn_str,
         sender,
         state,
     };
