@@ -103,12 +103,13 @@ impl Board {
         }
         // create tokens
         let player_tokens = players.values().enumerate().map(move |(i, player)| {
+            let mut rng = thread_rng();
             let position = match i {
                 0 => (0, 0),
                 1 => (height - 1, width - 1),
                 2 => (0, width - 1),
                 3 => (height - 1, 0),
-                _ => panic!("Too many players"),
+                _ => (rng.gen_range(0, height), rng.gen_range(0, width)),
             };
             (player.id, PlayerToken::new(player, position))
         }).collect();
