@@ -89,7 +89,7 @@ impl SoundEngine {
             sink.append(source.repeat_infinite());
             sink
         });
-        sink.set_volume(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().audio_level)) / 100.0);
+        sink.set_volume(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().music_level)) / 100.0);
         sink.play();
         *current_music = Some(music);
     }
@@ -99,17 +99,17 @@ impl SoundEngine {
         if let Some(music) = *current_music {
             let mut music_sinks = self.music_sinks.lock().unwrap();
             if let Some(sink) = music_sinks.get_mut(&music) {
-                sink.set_volume(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().audio_level)) / 100.0);
+                sink.set_volume(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().music_level)) / 100.0);
             }
         }
     }
 
-    pub fn poke_volume(&self, audio_level: u8) {
+    pub fn poke_options(&self, new_options: &options::GameOptions) {
         let current_music = self.current_music.lock().unwrap();
         if let Some(music) = *current_music {
             let mut music_sinks = self.music_sinks.lock().unwrap();
             if let Some(sink) = music_sinks.get_mut(&music) {
-                sink.set_volume(MUSIC_VOLUME * (f32::from(audio_level)) / 100.0);
+                sink.set_volume(MUSIC_VOLUME * (f32::from(new_options.music_level)) / 100.0);
             }
         }
     }
@@ -121,7 +121,7 @@ impl SoundEngine {
             sink.set_volume(SOUND_VOLUME);
             sink
         });
-        sink.set_volume(SOUND_VOLUME * (f32::from(options::HANDLE.fetch().audio_level)) / 100.0);
+        sink.set_volume(SOUND_VOLUME * (f32::from(options::HANDLE.fetch().sound_level)) / 100.0);
         snd.play_on(sink);
     }
 }

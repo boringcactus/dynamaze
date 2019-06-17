@@ -32,7 +32,8 @@ widget_ids! {
         new_local_button,
         main_menu_button,
         error_text,
-        audio_slider,
+        music_slider,
+        sound_slider,
         save_button,
     }
 }
@@ -379,7 +380,7 @@ impl GameController {
                 }
 
                 let options_button = widget::Button::new()
-                    .label("Option")
+                    .label("Options")
                     .wh(BUTTON_DIMENSIONS)
                     .color(conrod_core::color::WHITE.with_alpha(0.4))
                     .label_color(colors::DARK.into())
@@ -613,14 +614,24 @@ impl GameController {
                     .mid_top_of(ids.canvas)
                     .set(ids.menu_header, ui);
 
-                if let Some(new_audio) = widget::Slider::new(f32::from(curr_options.audio_level), 0.0, 100.0)
-                    .label("Audio Level")
+                if let Some(new_music) = widget::Slider::new(f32::from(curr_options.music_level), 0.0, 100.0)
+                    .label("Music Level")
                     .down_from(ids.menu_header, MARGIN)
                     .padded_w_of(ids.menu_header, -MARGIN)
                     .align_middle_x_of(ids.menu_header)
-                    .set(ids.audio_slider, ui) {
-                    curr_options.audio_level = new_audio as u8;
-                    sound::SOUND.poke_volume(curr_options.audio_level);
+                    .set(ids.music_slider, ui) {
+                    curr_options.music_level = new_music as u8;
+                    sound::SOUND.poke_options(curr_options);
+                }
+
+                if let Some(new_sound) = widget::Slider::new(f32::from(curr_options.sound_level), 0.0, 100.0)
+                    .label("Sound Level")
+                    .down_from(ids.music_slider, MARGIN)
+                    .w_of(ids.music_slider)
+                    .align_middle_x_of(ids.music_slider)
+                    .set(ids.sound_slider, ui) {
+                    curr_options.sound_level = new_sound as u8;
+                    sound::SOUND.poke_options(curr_options);
                 }
 
                 let save_button = widget::Button::new()

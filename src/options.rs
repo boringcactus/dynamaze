@@ -10,13 +10,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct GameOptions {
-    pub audio_level: u8,
+    pub music_level: u8,
+    pub sound_level: u8,
 }
 
 impl Default for GameOptions {
     fn default() -> Self {
         GameOptions {
-            audio_level: 50,
+            music_level: 50,
+            sound_level: 50,
         }
     }
 }
