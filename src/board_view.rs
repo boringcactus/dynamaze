@@ -8,7 +8,7 @@ use graphics::character::CharacterCache;
 use graphics::types::{Color, Rectangle};
 
 use crate::{BoardController, colors, Direction, PlayerID, Tile};
-use crate::anim::AnimGlobalState;
+use crate::anim;
 use crate::board_controller::TurnState;
 
 #[derive(Clone, Debug)]
@@ -300,7 +300,7 @@ impl BoardView {
 
     /// Draw board
     pub fn draw<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
+        &self, controller: &BoardController, local_id: PlayerID,
         glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Line, Rectangle};
@@ -321,7 +321,7 @@ impl BoardView {
         let board_rect = [board.west, board.north, board_width, board_height];
 
         // draw the tiles
-        self.draw_tiles(controller, local_id, anim_state, glyphs, c, g);
+        self.draw_tiles(controller, local_id, glyphs, c, g);
 
         // draw tile edges
         let cell_edge = Line::new(settings.cell_edge_color, settings.cell_edge_radius);
@@ -344,13 +344,13 @@ impl BoardView {
         self.draw_insert_guides(controller, local_id, glyphs, c, g);
 
         // draw player tokens
-        self.draw_player_tokens(DrawMode::All, controller, local_id, anim_state, glyphs, c, g);
+        self.draw_player_tokens(DrawMode::All, controller, local_id, glyphs, c, g);
 
         // draw own token on top of others
-        self.draw_player_tokens(DrawMode::OnlySelf, controller, local_id, anim_state, glyphs, c, g);
+        self.draw_player_tokens(DrawMode::OnlySelf, controller, local_id, glyphs, c, g);
 
         // draw UI
-        self.draw_ui(controller, local_id, anim_state, glyphs, c, g);
+        self.draw_ui(controller, local_id, glyphs, c, g);
     }
 
     fn tile_extents(&self, controller: &BoardController, row: usize, col: usize) -> Extents {
@@ -387,7 +387,7 @@ impl BoardView {
     }
 
     fn draw_tiles<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
+        &self, controller: &BoardController, local_id: PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Transformed;
@@ -397,9 +397,10 @@ impl BoardView {
         let (cell_size, _, _) = self.tile_padding(controller);
         let current_player_pos = controller.board.player_pos(local_id);
         let reachable = controller.board.reachable_coords(current_player_pos);
+        let loose_insert = &anim::STATE.read().unwrap().loose_insert;
 
         let offset_c = {
-            let delta = [0.0, anim_state.loose_insert.distance_left * cell_size] * anim_state.loose_insert.offset_dir;
+            let delta = [0.0, loose_insert.distance_left * cell_size] * loose_insert.offset_dir;
             c.trans_pos(delta)
         };
 
@@ -413,14 +414,14 @@ impl BoardView {
                 };
                 let is_highlighted = controller.highlighted_tile == (j, i);
                 // TODO does this belong here or in draw_tile with everything else
-                let c = if anim_state.loose_insert.applies_to_pos((j, i)) {
+                let c = if loose_insert.applies_to_pos((j, i)) {
                     &offset_c
                 } else {
                     c
                 };
                 self.draw_tile(
                     controller.board.get([i, j]), cell, color,
-                    is_highlighted, false, controller, local_id, anim_state,
+                    is_highlighted, false, controller, local_id,
                     _glyphs, c, g,
                 );
             }
@@ -430,7 +431,7 @@ impl BoardView {
     #[allow(clippy::too_many_arguments)]
     fn draw_tile<G: Graphics, C>(
         &self, tile: &Tile, outer: Extents, background_color: Color, draw_border: bool,
-        is_loose: bool, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
+        is_loose: bool, controller: &BoardController, local_id: PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Rectangle, Polygon, Transformed};
@@ -439,6 +440,7 @@ impl BoardView {
 
         let (cell_size, _, _) = self.tile_padding(controller);
         let wall_width = cell_size * settings.wall_width;
+        let anim_state = anim::STATE.read().unwrap();
 
         let transform = c.transform
             .trans_pos(outer.center())
@@ -618,7 +620,7 @@ impl BoardView {
 
     #[allow(clippy::too_many_arguments)]
     fn draw_player_tokens<G: Graphics, C>(
-        &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
+        &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID,
         _glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::{Ellipse, Transformed};
@@ -627,6 +629,7 @@ impl BoardView {
 
         let (cell_size, _, _) = self.tile_padding(controller);
         let wall_width = cell_size * settings.wall_width;
+        let anim_state = anim::STATE.read().unwrap();
 
         for token in controller.board.player_tokens.values() {
             let (row, col) = token.position;
@@ -657,11 +660,12 @@ impl BoardView {
     }
 
     fn draw_ui<G: Graphics, C>(
-        &self, controller: &BoardController, local_id: PlayerID, anim_state: &AnimGlobalState,
+        &self, controller: &BoardController, local_id: PlayerID,
         glyphs: &mut C, c: &Context, g: &mut G,
     ) where C: CharacterCache<Texture=G::Texture> {
         use graphics::Transformed;
         let (cell_size, _, _) = self.tile_padding(controller);
+        let anim_state = anim::STATE.read().unwrap();
 
         // draw loose tile
         {
@@ -674,7 +678,7 @@ impl BoardView {
             };
             self.draw_tile(
                 &controller.board.loose_tile, cell, self.settings.background_color,
-                false, true, controller, local_id, anim_state,
+                false, true, controller, local_id,
                 glyphs, &c, g,
             );
         }

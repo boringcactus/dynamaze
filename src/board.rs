@@ -6,7 +6,7 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{Direction, Player, PlayerID, Shape, Tile};
-use crate::anim::AnimGlobalState;
+use crate::anim;
 use crate::demo;
 use crate::tutorial;
 
@@ -166,12 +166,13 @@ impl Board {
     }
 
     /// Inserts the loose tile at its current position
-    pub fn insert_loose_tile(&mut self, anim: &mut AnimGlobalState) {
+    pub fn insert_loose_tile(&mut self) {
         let (dir, guide_idx) = self.loose_tile_position;
         let dimensions = (self.width(), self.height());
         let (width, height) = dimensions;
         let target_idx = 2 * guide_idx + 1;
-        anim.loose_insert.reset(dir * Direction::South, target_idx);
+        let sync = anim::AnimSync::Insert(dir * Direction::South, target_idx);
+        anim::STATE.write().unwrap().apply_send(sync);
         // general process: copy into the current position, so start opposite correct margin
         let (mut j, mut i) = match dir {
             Direction::North => (height - 1, target_idx),

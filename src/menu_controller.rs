@@ -8,7 +8,7 @@ use piston::input::{GenericEvent, Key};
 use rand::prelude::*;
 
 use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
-use crate::anim::AnimGlobalState;
+use crate::anim;
 use crate::colors;
 use crate::demo;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
@@ -52,8 +52,6 @@ pub struct GameController {
     pub ctrl: bool,
     /// Active player ID the last time the state was checked for a notification
     pub last_player: Option<PlayerID>,
-    /// Current animation state
-    pub anim_state: AnimGlobalState,
 }
 
 impl GameController {
@@ -70,7 +68,6 @@ impl GameController {
             shift: false,
             ctrl: false,
             last_player: None,
-            anim_state: AnimGlobalState::new(),
         }
     }
 
@@ -82,6 +79,7 @@ impl GameController {
         let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
         let state = Arc::new(RwLock::new(state));
         let sender = net::run_host(state.clone(), self.player_id);
+        anim::STATE.write().unwrap().set_send(sender.clone());
         let conn_state = ConnectedState {
             state,
             sender,
@@ -102,6 +100,7 @@ impl GameController {
             let state = NetGameState::Error("Connecting...".to_string());
             let state = Arc::new(RwLock::new(state));
             let mut sender = net::run_guest(address, state.clone(), self.player_id);
+            anim::STATE.write().unwrap().set_send(sender.clone());
             let player = Player::new("Guesty McGuestface".into(), random(), self.player_id);
             NetGameState::join_lobby(&mut sender, player);
             let conn_state = ConnectedState {
@@ -219,7 +218,7 @@ impl GameController {
         use piston::input::Button;
 
         if let Some(args) = e.update_args() {
-            self.anim_state.advance_by(args.dt);
+            anim::STATE.write().unwrap().advance_by(args.dt);
         }
 
         // TODO only do this when a turn actually ends
@@ -284,7 +283,7 @@ impl GameController {
                             (false, None, None)
                         }
                         NetGameState::Active(ref mut board_controller) => {
-                            let state_dirty = board_controller.event(&view.board_view, e, self.player_id, &mut self.anim_state);
+                            let state_dirty = board_controller.event(&view.board_view, e, self.player_id);
                             if state_dirty {
                                 if let Some(winner) = board_controller.winner() {
                                     let info = GameOverInfo {

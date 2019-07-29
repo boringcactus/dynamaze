@@ -3,7 +3,6 @@ use std::convert::TryInto;
 use std::sync::{Arc, RwLock};
 
 use crate::{Board, Direction, Player, PlayerID};
-use crate::anim::AnimGlobalState;
 use crate::board::PlayerToken;
 use crate::board_controller::{BoardController, BoardSettings};
 use crate::colors;
@@ -45,7 +44,6 @@ pub fn new_controller() -> GameController {
         shift: false,
         ctrl: false,
         last_player: None,
-        anim_state: AnimGlobalState::new(),
     }
 }
 

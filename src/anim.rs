@@ -1,6 +1,11 @@
 use std::f64::consts::FRAC_PI_2;
+use std::sync::RwLock;
+
+use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
 use crate::Direction;
+use crate::net::{Message, MessageCtrl};
 
 /// Tracks state of the target stripe animation
 pub struct TargetStripeState {
@@ -26,6 +31,7 @@ impl TargetStripeState {
 }
 
 /// Checks the direction in which the tile rotate animation spins
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RotateDir {
     /// Clockwise
     CW,
@@ -47,7 +53,7 @@ impl LooseRotateState {
         }
     }
 
-    pub fn reset(&mut self, dir: RotateDir) {
+    fn reset(&mut self, dir: RotateDir) {
         self.angle += match dir {
             RotateDir::CW => -FRAC_PI_2,
             RotateDir::CCW => FRAC_PI_2,
@@ -90,7 +96,7 @@ impl LooseInsertState {
         }
     }
 
-    pub fn reset(&mut self, dir: Direction, coord: usize) {
+    fn reset(&mut self, dir: Direction, coord: usize) {
         self.offset_dir = dir;
         self.distance_left = 1.0;
         self.coordinate = coord;
@@ -131,14 +137,16 @@ pub struct AnimGlobalState {
     pub target_stripe: TargetStripeState,
     pub loose_rotate: LooseRotateState,
     pub loose_insert: LooseInsertState,
+    net_send: Option<mpsc::Sender<MessageCtrl>>
 }
 
 impl AnimGlobalState {
-    pub fn new() -> AnimGlobalState {
+    fn new() -> AnimGlobalState {
         AnimGlobalState {
             target_stripe: TargetStripeState::new(),
             loose_rotate: LooseRotateState::new(),
             loose_insert: LooseInsertState::new(),
+            net_send: None,
         }
     }
 
@@ -147,10 +155,35 @@ impl AnimGlobalState {
         self.loose_rotate.advance_by(ticks);
         self.loose_insert.advance_by(ticks);
     }
+
+    pub fn set_send(&mut self, send: mpsc::Sender<MessageCtrl>) {
+        self.net_send = Some(send)
+    }
+
+    pub fn apply(&mut self, msg: AnimSync) {
+        match msg {
+            AnimSync::Rotate(dir) => self.loose_rotate.reset(dir),
+            AnimSync::Insert(dir, x) => self.loose_insert.reset(dir, x)
+        }
+    }
+
+    pub fn apply_send(&mut self, sync: AnimSync) {
+        self.apply(sync.clone());
+        if let Some(ref mut send) = self.net_send {
+            let message = Message::Anim(sync);
+            send.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+        }
+    }
 }
 
-impl Default for AnimGlobalState {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum AnimSync {
+    Rotate(RotateDir),
+    Insert(Direction, usize),
+}
+
+lazy_static! {
+    pub static ref STATE: RwLock<AnimGlobalState> = {
+        RwLock::new(AnimGlobalState::new())
+    };
 }

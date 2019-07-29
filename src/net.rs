@@ -21,6 +21,7 @@ use tokio::prelude::*;
 use tokio::sync::mpsc;
 
 use crate::{Player, PlayerID};
+use crate::anim;
 use crate::menu::NetGameState;
 
 const USIZE_NET_LEN: usize = 8;
@@ -34,6 +35,8 @@ pub enum Message {
     State(NetGameState),
     /// Edit player info
     EditPlayer(PlayerID, Player),
+    /// Synchronize animation state
+    Anim(anim::AnimSync),
 }
 
 #[derive(Debug)]
@@ -247,6 +250,9 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
             if is_host {
                 return Some(MessageCtrl::send_without(Message::State(state.clone()), source));
             }
+        }
+        Message::Anim(sync) => {
+            anim::STATE.write().unwrap().apply(sync);
         }
     }
     None
