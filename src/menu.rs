@@ -14,8 +14,6 @@ use crate::options::GameOptions;
 /// Lobby information
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LobbyInfo {
-    /// Lobby name
-    pub name: String,
     /// Lobby host
     pub host: Player,
     /// Currently connected players, not including host
@@ -30,7 +28,6 @@ impl LobbyInfo {
     /// Creates a new lobby
     pub fn new(player_id: PlayerID) -> LobbyInfo {
         LobbyInfo {
-            name: "DynaMaze Lobby".into(),
             host: Player::new("Host McHostface".into(), Color(0.7, 0.2, 0.7), player_id),
             guests: vec![],
             local_addr: Err("Loading...".into()),

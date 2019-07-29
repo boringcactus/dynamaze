@@ -34,10 +34,7 @@ impl GameView {
                 let state = state.read().expect("Failed to acquire state mutex");
                 match *state {
                     NetGameState::Lobby(ref info) => {
-                        let transform = c.transform.trans(0.0, 120.0);
-                        // TODO edit lobby name
-                        graphics::text(colors::DARK.into(), 20, &info.name, glyphs, transform, g).ok().expect("Failed to draw text");
-                        let mut transform = transform.trans(0.0, 30.0);
+                        let mut transform = c.transform.trans(0.0, 150.0);
                         for player in info.players_ref() {
                             // TODO don't do this
                             let is_me = player.id == controller.player_id;
