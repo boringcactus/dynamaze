@@ -698,6 +698,12 @@ impl BoardView {
                 let transform = c.transform.trans(west, north);
                 graphics::text(self.settings.text_color, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
             }
+            if let Some(tutorial_step) = &controller.board.tutorial_step {
+                let text = tutorial_step.text();
+                let north = north + 60.0;
+                let transform = c.transform.trans(west, north);
+                graphics::text(self.settings.text_color, 20, &text, glyphs, transform, g).ok().expect("Failed to draw text");
+            }
         }
 
         // draw player list

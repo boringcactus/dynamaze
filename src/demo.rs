@@ -90,5 +90,6 @@ pub fn new_board(players: &BTreeMap<PlayerID, Player>) -> Board {
         loose_tile,
         loose_tile_position,
         player_tokens,
+        tutorial_step: None,
     }
 }

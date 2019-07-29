@@ -47,6 +47,7 @@ mod options;
 mod player;
 mod sound;
 mod tile;
+mod tutorial;
 
 fn main() {
     let opengl = OpenGL::V3_2;

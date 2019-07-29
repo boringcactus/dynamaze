@@ -197,6 +197,14 @@ impl BoardController {
             }
         }
 
+        if let Some(tutorial_step) = &self.board.tutorial_step {
+            if dirty && self.winner().is_some() {
+                if let Some(next_step) = tutorial_step.next() {
+                    next_step.apply(&mut self.board);
+                }
+            }
+        }
+
         dirty
     }
 

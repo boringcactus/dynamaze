@@ -15,11 +15,13 @@ use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameSta
 use crate::net::{self, Message, MessageCtrl};
 use crate::options;
 use crate::sound;
+use crate::tutorial;
 
 widget_ids! {
     pub struct Ids {
         canvas,
         menu_header,
+        tutorial_button,
         host_button,
         connect_button,
         options_button,
@@ -70,6 +72,10 @@ impl GameController {
             last_player: None,
             anim_state: AnimGlobalState::new(),
         }
+    }
+
+    fn tutorial(&mut self) {
+        self.state = GameState::InGame(tutorial::new_conn_state(self.player_id));
     }
 
     fn host(&mut self) {
@@ -355,13 +361,25 @@ impl GameController {
                     .mid_top_of(ids.canvas)
                     .set(ids.menu_header, ui);
 
+                let tutorial_button = widget::Button::new()
+                    .label("Tutorial")
+                    .wh(BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .align_middle_x_of(ids.canvas)
+                    .down_from(ids.menu_header, 3.0 * MARGIN)
+                    .set(ids.tutorial_button, ui);
+                for _ in tutorial_button {
+                    self.tutorial();
+                }
+
                 let host_button = widget::Button::new()
                     .label("Host Game")
                     .wh(BUTTON_DIMENSIONS)
                     .color(conrod_core::color::WHITE.with_alpha(0.4))
                     .label_color(colors::DARK.into())
                     .align_middle_x_of(ids.canvas)
-                    .align_middle_y_of(ids.canvas)
+                    .down_from(ids.tutorial_button, MARGIN)
                     .set(ids.host_button, ui);
                 for _host in host_button {
                     self.host();

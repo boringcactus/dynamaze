@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Direction, Player, PlayerID, Shape, Tile};
 use crate::anim::AnimGlobalState;
 use crate::demo;
+use crate::tutorial;
 
 /// Information about a player's token on the board
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -47,6 +48,8 @@ pub struct Board {
     pub loose_tile_position: (Direction, usize),
     /// Player tokens
     pub player_tokens: BTreeMap<PlayerID, PlayerToken>,
+    /// Step in tutorial, if any
+    pub tutorial_step: Option<tutorial::TutorialStep>,
 }
 
 fn avoid_path(tile: &mut Tile, target: Direction) {
@@ -124,6 +127,7 @@ impl Board {
             loose_tile,
             loose_tile_position: (loose_tile_edge, loose_tile_spot),
             player_tokens,
+            tutorial_step: None,
         };
         let player_ids = result.player_tokens.keys().cloned().collect::<Vec<_>>();
         for player in &player_ids {
