@@ -27,13 +27,13 @@ impl LobbyInfo {
     }
 
     /// Gets a player by ID
-    pub fn player(&self, id: &PlayerID) -> Option<&Player> {
-        self.players.iter().filter(|p| p.id == *id).nth(0)
+    pub fn player(&self, id: PlayerID) -> Option<&Player> {
+        self.players.iter().filter(|p| p.id == id).nth(0)
     }
 
     /// Gets a mutable player by ID
-    pub fn player_mut(&mut self, id: &PlayerID) -> &mut Player {
-        self.players.iter_mut().filter(|p| p.id == *id).nth(0).expect("Not in lobby!")
+    pub fn player_mut(&mut self, id: PlayerID) -> &mut Player {
+        self.players.iter_mut().filter(|p| p.id == id).nth(0).expect("Not in lobby!")
     }
 }
 

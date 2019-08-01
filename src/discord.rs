@@ -14,6 +14,7 @@ use crate::Outbox;
 use self::discord_game_sdk::event::activities::Join;
 use self::discord_game_sdk::event::lobbies::MemberConnect;
 
+#[allow(clippy::unreadable_literal)]
 const CLIENT_ID: i64 = 605927677744119827;
 const CHANNEL: u8 = 0;
 
@@ -164,11 +165,9 @@ impl<'a> DiscordHandle<'a> {
             };
             let buf = serialize(real_message).expect("Discord network send error");
             for user in members {
-                if user != me {
-                    if message.should_send(user) {
-                        self.discord.send_lobby_network_message(lobby, user, CHANNEL, &buf)
-                            .soft_expect("Discord network send error");
-                    }
+                if user != me && message.should_send(user) {
+                    self.discord.send_lobby_network_message(lobby, user, CHANNEL, &buf)
+                        .soft_expect("Discord network send error");
                 }
             }
         }
@@ -218,6 +217,6 @@ impl<'a> DiscordHandle<'a> {
     }
 
     pub fn my_name(&mut self) -> String {
-        self.discord.current_user().map(|x| x.username().to_string()).unwrap_or(String::new())
+        self.discord.current_user().map(|x| x.username().to_string()).unwrap_or_default()
     }
 }

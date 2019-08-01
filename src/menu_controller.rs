@@ -6,6 +6,7 @@ use std::ffi::CString;
 use std::sync::{Arc, RwLock};
 
 use clipboard::{ClipboardContext, ClipboardProvider};
+use conrod_core::UiCell;
 use discord_game_sdk::event::activities::Join;
 use discord_game_sdk::event::lobbies::MemberConnect;
 use piston::input::{GenericEvent, Key};
@@ -19,6 +20,7 @@ use crate::discord::{Activity, DiscordHandle};
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
 use crate::net::{Message, MessageCtrl};
 use crate::options;
+use crate::options::GameOptions;
 use crate::sound;
 use crate::tutorial;
 
@@ -141,7 +143,7 @@ impl GameController {
             let mut state = state.write().expect("Failed to lock state");
             let outbox = &mut conn_state.outbox;
             if let NetGameState::Lobby(ref mut info) = *state {
-                let player = info.player_mut(&self.player_id);
+                let player = info.player_mut(self.player_id);
                 player.color = random();
                 let message = Message::EditPlayer(self.player_id, player.clone());
                 outbox.push_back(message.into());
@@ -155,7 +157,7 @@ impl GameController {
             let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
             if let NetGameState::Lobby(ref mut info) = *state {
-                let player = info.player_mut(&self.player_id);
+                let player = info.player_mut(self.player_id);
                 player.name = new_name.to_string();
                 let message = Message::EditPlayer(self.player_id, player.clone());
                 outbox.push_back(message.into());
@@ -169,7 +171,7 @@ impl GameController {
             let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
             if let NetGameState::Lobby(ref mut info) = *state {
-                if let Some(me) = info.player(&self.player_id) {
+                if let Some(me) = info.player(self.player_id) {
                     let child = Player::new_child(me.name.clone(), me.color, random(), me.id);
                     info.players.push(child.clone());
                     outbox.push_back(Message::JoinLobby(child).into());
@@ -425,352 +427,392 @@ impl GameController {
             outbox.push_back(message.into());
         }
     }
+}
+
+type DeferredAction = Box<dyn Fn(&mut GameController, &mut DiscordHandle)>;
+
+macro_rules! defer {
+    (self.$e:ident(discord)) => {
+        #[allow(clippy::redundant_closure)]
+        return Some(Box::new(move |x: &mut Self, y: &mut DiscordHandle| x.$e(y)));
+    };
+    (self.$e:ident(discord, $( $a:expr ),*)) => {
+        #[allow(clippy::redundant_closure)]
+        return Some(Box::new(move |x: &mut Self, y: &mut DiscordHandle| x.$e(y, $($a),*)));
+    };
+    (self.$e:ident($( $a:expr ),*)) => {
+        #[allow(clippy::redundant_closure)]
+        return Some(Box::new(move |x: &mut Self, _: &mut DiscordHandle| x.$e($($a),*)));
+    };
+}
+
+impl GameController {
+    const MARGIN: conrod_core::Scalar = 30.0;
+    const TITLE_SIZE: conrod_core::FontSize = 42;
+    const SUBTITLE_SIZE: conrod_core::FontSize = 32;
+    const BUTTON_DIMENSIONS: conrod_core::Dimensions = [200.0, 60.0];
 
     /// Run Conrod GUI
     pub fn gui(&mut self, ui: &mut conrod_core::UiCell, ids: &Ids, discord: &mut DiscordHandle) {
+        use conrod_core::{widget, Widget};
+
+        widget::Canvas::new().pad(Self::MARGIN).set(ids.canvas, ui);
+
+        let action = match self.state {
+            GameState::MainMenu => self.main_menu_gui(ui, ids, discord),
+            GameState::ConnectMenu(ref mut connect_addr) => Self::connect_gui(ui, ids, connect_addr),
+            GameState::InGame(ref conn_state) => Self::in_game_gui(ui, ids, conn_state, self.player_id),
+            GameState::HardError(ref text) => Self::hard_error_gui(ui, ids, text),
+            GameState::Options(ref mut curr_options) => Self::options_gui(ui, ids, curr_options),
+        };
+
+        if let Some(action) = action {
+            action(self, discord);
+        }
+    }
+
+    fn main_menu_gui(&mut self, ui: &mut UiCell, ids: &Ids, discord: &mut DiscordHandle) -> Option<DeferredAction> {
         use conrod_core::{widget, Colorable, Labelable, Positionable, Sizeable, Widget};
 
-        const MARGIN: conrod_core::Scalar = 30.0;
-        const TITLE_SIZE: conrod_core::FontSize = 42;
-        const SUBTITLE_SIZE: conrod_core::FontSize = 32;
-        const BUTTON_DIMENSIONS: conrod_core::Dimensions = [200.0, 60.0];
+        widget::Text::new("DynaMaze")
+            .color(colors::DARK.into())
+            .font_size(Self::TITLE_SIZE)
+            .mid_top_of(ids.canvas)
+            .set(ids.menu_header, ui);
 
-        widget::Canvas::new().pad(MARGIN).set(ids.canvas, ui);
+        let tutorial_button = widget::Button::new()
+            .label("Tutorial")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .align_middle_x_of(ids.canvas)
+            .down_from(ids.menu_header, 3.0 * Self::MARGIN)
+            .set(ids.tutorial_button, ui);
+        for _ in tutorial_button {
+            self.tutorial();
+        }
 
-        let mut deferred_actions: Vec<Box<dyn Fn(&mut Self)>> = vec![];
+        let host_button = widget::Button::new()
+            .label("Host Game")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .align_middle_x_of(ids.canvas)
+            .down_from(ids.tutorial_button, Self::MARGIN)
+            .set(ids.host_button, ui);
+        for _host in host_button {
+            self.host(discord);
+        }
 
-        macro_rules! defer {
-            (self.$e:ident($( $a:expr ),*)) => {
-                #[allow(clippy::redundant_closure)]
-                deferred_actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)))
+        let connect_button = widget::Button::new()
+            .label("Join Game")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .align_middle_x_of(ids.canvas)
+            .down_from(ids.host_button, Self::MARGIN)
+            .set(ids.connect_button, ui);
+        for _connect in connect_button {
+            self.connect();
+        }
+
+        let options_button = widget::Button::new()
+            .label("Options")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .align_middle_x_of(ids.canvas)
+            .down_from(ids.connect_button, Self::MARGIN)
+            .set(ids.options_button, ui);
+        for _options in options_button {
+            self.enter_options();
+        }
+
+        None
+    }
+
+    fn connect_gui(ui: &mut UiCell, ids: &Ids, connect_addr: &mut String) -> Option<DeferredAction> {
+        use conrod_core::{widget, Colorable, Labelable, Positionable, Sizeable, Widget};
+
+        widget::Text::new("Connect to Game")
+            .color(colors::DARK.into())
+            .font_size(Self::SUBTITLE_SIZE)
+            .mid_top_of(ids.canvas)
+            .set(ids.menu_header, ui);
+
+        let main_menu_button = widget::Button::new()
+            .label("Main Menu")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .top_left_of(ids.canvas)
+            .set(ids.main_menu_button, ui);
+        if main_menu_button.was_clicked() {
+            defer!(self.main_menu());
+        }
+
+        let text = widget::TextBox::new(connect_addr)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .text_color(colors::PURPLE.into())
+            .align_middle_x_of(ids.canvas)
+            .align_middle_y_of(ids.canvas)
+            .set(ids.ip_box, ui);
+        for evt in text {
+            match evt {
+                widget::text_box::Event::Update(new_text) => {
+                    *connect_addr = new_text;
+                }
+                widget::text_box::Event::Enter => {
+                    defer!(self.do_connect(discord));
+                }
             }
         }
 
-        match self.state {
-            GameState::MainMenu => {
-                widget::Text::new("DynaMaze")
+        let connect_button = widget::Button::new()
+            .label("Connect")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .align_middle_x_of(ids.canvas)
+            .down_from(ids.ip_box, Self::MARGIN)
+            .set(ids.connect_button, ui);
+        if connect_button.was_clicked() {
+            defer!(self.do_connect(discord));
+        }
+
+        None
+    }
+
+    fn in_game_gui(ui: &mut UiCell, ids: &Ids, conn_state: &ConnectedState, player_id: PlayerID) -> Option<DeferredAction> {
+        use conrod_core::{widget, Colorable, Labelable, Positionable, Sizeable, Widget};
+
+        let state = &conn_state.state;
+        let state = state.read().expect("Failed to lock state");
+        match *state {
+            NetGameState::Lobby(ref info) => {
+                widget::Text::new("Connected to lobby")
                     .color(colors::DARK.into())
-                    .font_size(TITLE_SIZE)
-                    .mid_top_of(ids.canvas)
-                    .set(ids.menu_header, ui);
-
-                let tutorial_button = widget::Button::new()
-                    .label("Tutorial")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.menu_header, 3.0 * MARGIN)
-                    .set(ids.tutorial_button, ui);
-                for _ in tutorial_button {
-                    self.tutorial();
-                }
-
-                let host_button = widget::Button::new()
-                    .label("Host Game")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.tutorial_button, MARGIN)
-                    .set(ids.host_button, ui);
-                for _host in host_button {
-                    self.host(discord);
-                }
-
-                let connect_button = widget::Button::new()
-                    .label("Join Game")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.host_button, MARGIN)
-                    .set(ids.connect_button, ui);
-                for _connect in connect_button {
-                    self.connect();
-                }
-
-                let options_button = widget::Button::new()
-                    .label("Options")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.connect_button, MARGIN)
-                    .set(ids.options_button, ui);
-                for _options in options_button {
-                    self.enter_options();
-                }
-            }
-            GameState::ConnectMenu(ref mut connect_addr) => {
-                widget::Text::new("Connect to Game")
-                    .color(colors::DARK.into())
-                    .font_size(SUBTITLE_SIZE)
+                    .font_size(Self::SUBTITLE_SIZE)
                     .mid_top_of(ids.canvas)
                     .set(ids.menu_header, ui);
 
                 let main_menu_button = widget::Button::new()
                     .label("Main Menu")
-                    .wh(BUTTON_DIMENSIONS)
+                    .wh(Self::BUTTON_DIMENSIONS)
                     .color(conrod_core::color::WHITE.with_alpha(0.4))
                     .label_color(colors::DARK.into())
                     .top_left_of(ids.canvas)
                     .set(ids.main_menu_button, ui);
-                for _press in main_menu_button {
+                if main_menu_button.was_clicked() {
                     defer!(self.main_menu());
                 }
 
-                let text = widget::TextBox::new(connect_addr)
+                let me = info.player(player_id);
+
+                let no_name = "loading...".to_string();
+                let my_name = me.map(|x| &x.name).unwrap_or(&no_name);
+                let name_box = widget::TextBox::new(&my_name)
                     .color(conrod_core::color::WHITE.with_alpha(0.4))
                     .text_color(colors::PURPLE.into())
-                    .align_middle_x_of(ids.canvas)
-                    .align_middle_y_of(ids.canvas)
-                    .set(ids.ip_box, ui);
-                for evt in text {
+                    .w(Self::BUTTON_DIMENSIONS[0])
+                    .align_right_of(ids.canvas)
+                    .down_from(ids.menu_header, Self::MARGIN)
+                    .set(ids.name_box, ui);
+                for evt in name_box {
                     match evt {
                         widget::text_box::Event::Update(new_text) => {
-                            self.state = GameState::ConnectMenu(new_text);
+                            let text = new_text.clone();
+                            defer!(self.set_own_name(&text));
                         }
-                        widget::text_box::Event::Enter => {
-                            self.do_connect(discord);
-                        }
+                        widget::text_box::Event::Enter => {}
                     }
                 }
 
-                let connect_button = widget::Button::new()
-                    .label("Connect")
-                    .wh(BUTTON_DIMENSIONS)
+                let my_color = me.map(|x| x.color).unwrap_or(colors::DARK);
+                widget::Circle::fill(Self::MARGIN / 2.0)
+                    .color(my_color.into())
+                    .align_middle_y_of(ids.name_box)
+                    .left_from(ids.name_box, Self::MARGIN)
+                    .set(ids.color_demo, ui);
+
+                let color_button = widget::Button::new()
+                    .label("Randomize Color")
                     .color(conrod_core::color::WHITE.with_alpha(0.4))
                     .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.ip_box, MARGIN)
-                    .set(ids.connect_button, ui);
-                for _press in connect_button {
-                    self.do_connect(discord);
+                    .wh(Self::BUTTON_DIMENSIONS)
+                    .align_right_of(ids.name_box)
+                    .down_from(ids.name_box, Self::MARGIN)
+                    .set(ids.color_button, ui);
+                if color_button.was_clicked() {
+                    defer!(self.randomize_color());
+                }
+
+                let new_local_button = widget::Button::new()
+                    .label("Add Local Player")
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .wh(Self::BUTTON_DIMENSIONS)
+                    .align_right_of(ids.name_box)
+                    .down_from(ids.color_button, Self::MARGIN)
+                    .set(ids.new_local_button, ui);
+                if new_local_button.was_clicked() {
+                    defer!(self.new_local_player());
+                }
+
+                let copy_secret_button = widget::Button::new()
+                    .label("Copy Join Secret")
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .wh(Self::BUTTON_DIMENSIONS)
+                    .align_right_of(ids.name_box)
+                    .down_from(ids.new_local_button, Self::MARGIN)
+                    .set(ids.copy_secret_button, ui);
+                if copy_secret_button.was_clicked() {
+                    defer!(self.copy_secret());
+                }
+
+                let start_button = widget::Button::new()
+                    .label("Begin Game")
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .wh(Self::BUTTON_DIMENSIONS)
+                    .mid_bottom_with_margin_on(ids.canvas, Self::MARGIN)
+                    .set(ids.start_button, ui);
+                if start_button.was_clicked() {
+                    defer!(self.start_hosted_game());
                 }
             }
-            GameState::InGame(ref conn_state) => {
-                let state = &conn_state.state;
-                let state = state.read().expect("Failed to lock state");
-                match *state {
-                    NetGameState::Lobby(ref info) => {
-                        widget::Text::new("Connected to lobby")
-                            .color(colors::DARK.into())
-                            .font_size(SUBTITLE_SIZE)
-                            .mid_top_of(ids.canvas)
-                            .set(ids.menu_header, ui);
+            NetGameState::Active(_) => {}
+            NetGameState::GameOver(ref info) => {
+                let text = format!("{} wins!", info.winner.name);
+                widget::Text::new(&text)
+                    .color(colors::DARK.into())
+                    .font_size(Self::SUBTITLE_SIZE)
+                    .mid_top_of(ids.canvas)
+                    .set(ids.menu_header, ui);
 
-                        let main_menu_button = widget::Button::new()
-                            .label("Main Menu")
-                            .wh(BUTTON_DIMENSIONS)
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .top_left_of(ids.canvas)
-                            .set(ids.main_menu_button, ui);
-                        for _press in main_menu_button {
-                            defer!(self.main_menu());
-                        }
-
-                        let me = info.player(&self.player_id);
-
-                        let no_name = "loading...".to_string();
-                        let my_name = me.map(|x| &x.name).unwrap_or(&no_name);
-                        let name_box = widget::TextBox::new(&my_name)
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .text_color(colors::PURPLE.into())
-                            .w(BUTTON_DIMENSIONS[0])
-                            .align_right_of(ids.canvas)
-                            .down_from(ids.menu_header, MARGIN)
-                            .set(ids.name_box, ui);
-                        for evt in name_box {
-                            match evt {
-                                widget::text_box::Event::Update(new_text) => {
-                                    let text = new_text.clone();
-                                    defer!(self.set_own_name(&text));
-                                }
-                                widget::text_box::Event::Enter => {}
-                            }
-                        }
-
-                        let my_color = me.map(|x| x.color).unwrap_or(colors::DARK);
-                        widget::Circle::fill(MARGIN / 2.0)
-                            .color(my_color.into())
-                            .align_middle_y_of(ids.name_box)
-                            .left_from(ids.name_box, MARGIN)
-                            .set(ids.color_demo, ui);
-
-                        let color_button = widget::Button::new()
-                            .label("Randomize Color")
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .wh(BUTTON_DIMENSIONS)
-                            .align_right_of(ids.name_box)
-                            .down_from(ids.name_box, MARGIN)
-                            .set(ids.color_button, ui);
-                        for _press in color_button {
-                            defer!(self.randomize_color());
-                        }
-
-                        let new_local_button = widget::Button::new()
-                            .label("Add Local Player")
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .wh(BUTTON_DIMENSIONS)
-                            .align_right_of(ids.name_box)
-                            .down_from(ids.color_button, MARGIN)
-                            .set(ids.new_local_button, ui);
-                        for _press in new_local_button {
-                            defer!(self.new_local_player());
-                        }
-
-                        let copy_secret_button = widget::Button::new()
-                            .label("Copy Join Secret")
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .wh(BUTTON_DIMENSIONS)
-                            .align_right_of(ids.name_box)
-                            .down_from(ids.new_local_button, MARGIN)
-                            .set(ids.copy_secret_button, ui);
-                        for _press in copy_secret_button {
-                            defer!(self.copy_secret());
-                        }
-
-                        let start_button = widget::Button::new()
-                            .label("Begin Game")
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .wh(BUTTON_DIMENSIONS)
-                            .mid_bottom_with_margin_on(ids.canvas, MARGIN)
-                            .set(ids.start_button, ui);
-                        for _press in start_button {
-                            defer!(self.start_hosted_game());
-                        }
-                    }
-                    NetGameState::Active(_) => {}
-                    NetGameState::GameOver(ref info) => {
-                        let text = format!("{} wins!", info.winner.name);
-                        widget::Text::new(&text)
-                            .color(colors::DARK.into())
-                            .font_size(SUBTITLE_SIZE)
-                            .mid_top_of(ids.canvas)
-                            .set(ids.menu_header, ui);
-
-                        // TODO just throw this in at the end for everything
-                        let main_menu_button = widget::Button::new()
-                            .label("Main Menu")
-                            .wh(BUTTON_DIMENSIONS)
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .top_left_of(ids.canvas)
-                            .set(ids.main_menu_button, ui);
-                        for _press in main_menu_button {
-                            defer!(self.main_menu());
-                        }
-                    }
-                    NetGameState::Error(ref text) => {
-                        widget::Text::new("Error")
-                            .color(colors::DARK.into())
-                            .font_size(SUBTITLE_SIZE)
-                            .mid_top_of(ids.canvas)
-                            .set(ids.menu_header, ui);
-
-                        widget::Text::new(text)
-                            .color(colors::DARK.into())
-                            .align_middle_x_of(ids.menu_header)
-                            .down_from(ids.menu_header, MARGIN)
-                            .set(ids.error_text, ui);
-
-                        let main_menu_button = widget::Button::new()
-                            .label("Main Menu")
-                            .wh(BUTTON_DIMENSIONS)
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .top_left_of(ids.canvas)
-                            .set(ids.main_menu_button, ui);
-                        for _press in main_menu_button {
-                            defer!(self.main_menu());
-                        }
-                    }
+                // TODO just throw this in at the end for everything
+                let main_menu_button = widget::Button::new()
+                    .label("Main Menu")
+                    .wh(Self::BUTTON_DIMENSIONS)
+                    .color(conrod_core::color::WHITE.with_alpha(0.4))
+                    .label_color(colors::DARK.into())
+                    .top_left_of(ids.canvas)
+                    .set(ids.main_menu_button, ui);
+                if main_menu_button.was_clicked() {
+                    defer!(self.main_menu());
                 }
             }
-            GameState::HardError(ref text) => {
+            NetGameState::Error(ref text) => {
                 widget::Text::new("Error")
                     .color(colors::DARK.into())
-                    .font_size(SUBTITLE_SIZE)
+                    .font_size(Self::SUBTITLE_SIZE)
                     .mid_top_of(ids.canvas)
                     .set(ids.menu_header, ui);
 
                 widget::Text::new(text)
                     .color(colors::DARK.into())
                     .align_middle_x_of(ids.menu_header)
-                    .down_from(ids.menu_header, MARGIN)
+                    .down_from(ids.menu_header, Self::MARGIN)
                     .set(ids.error_text, ui);
 
                 let main_menu_button = widget::Button::new()
                     .label("Main Menu")
-                    .wh(BUTTON_DIMENSIONS)
+                    .wh(Self::BUTTON_DIMENSIONS)
                     .color(conrod_core::color::WHITE.with_alpha(0.4))
                     .label_color(colors::DARK.into())
                     .top_left_of(ids.canvas)
                     .set(ids.main_menu_button, ui);
-                for _press in main_menu_button {
-                    defer!(self.main_menu());
-                }
-            }
-            GameState::Options(ref mut curr_options) => {
-                widget::Text::new("Options")
-                    .color(colors::DARK.into())
-                    .font_size(TITLE_SIZE)
-                    .mid_top_of(ids.canvas)
-                    .set(ids.menu_header, ui);
-
-                if let Some(new_music) = widget::Slider::new(f32::from(curr_options.music_level), 0.0, 100.0)
-                    .label("Music Level")
-                    .down_from(ids.menu_header, MARGIN)
-                    .padded_w_of(ids.menu_header, -MARGIN)
-                    .align_middle_x_of(ids.menu_header)
-                    .set(ids.music_slider, ui) {
-                    curr_options.music_level = new_music as u8;
-                    sound::SOUND.poke_options(curr_options);
-                }
-
-                if let Some(new_sound) = widget::Slider::new(f32::from(curr_options.sound_level), 0.0, 100.0)
-                    .label("Sound Level")
-                    .down_from(ids.music_slider, MARGIN)
-                    .w_of(ids.music_slider)
-                    .align_middle_x_of(ids.music_slider)
-                    .set(ids.sound_slider, ui) {
-                    curr_options.sound_level = new_sound as u8;
-                    sound::SOUND.poke_options(curr_options);
-                }
-
-                let save_button = widget::Button::new()
-                    .label("Save")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .mid_bottom_of(ids.canvas)
-                    .set(ids.save_button, ui);
-                for _press in save_button {
-                    defer!(self.save_options());
-                }
-
-                let main_menu_button = widget::Button::new()
-                    .label("Main Menu")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .top_left_of(ids.canvas)
-                    .set(ids.main_menu_button, ui);
-                for _press in main_menu_button {
+                if main_menu_button.was_clicked() {
                     defer!(self.main_menu());
                 }
             }
         }
 
-        for action in deferred_actions {
-            action(self);
+        None
+    }
+
+    fn hard_error_gui(ui: &mut UiCell, ids: &Ids, text: &str) -> Option<DeferredAction> {
+        use conrod_core::{widget, Colorable, Labelable, Positionable, Sizeable, Widget};
+
+        widget::Text::new("Error")
+            .color(colors::DARK.into())
+            .font_size(Self::SUBTITLE_SIZE)
+            .mid_top_of(ids.canvas)
+            .set(ids.menu_header, ui);
+
+        widget::Text::new(text)
+            .color(colors::DARK.into())
+            .align_middle_x_of(ids.menu_header)
+            .down_from(ids.menu_header, Self::MARGIN)
+            .set(ids.error_text, ui);
+
+        let main_menu_button = widget::Button::new()
+            .label("Main Menu")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .top_left_of(ids.canvas)
+            .set(ids.main_menu_button, ui);
+        if main_menu_button.was_clicked() {
+            defer!(self.main_menu());
         }
+
+        None
+    }
+
+    fn options_gui(ui: &mut UiCell, ids: &Ids, curr_options: &mut GameOptions) -> Option<DeferredAction> {
+        use conrod_core::{widget, Colorable, Labelable, Positionable, Sizeable, Widget};
+
+        widget::Text::new("Options")
+            .color(colors::DARK.into())
+            .font_size(Self::TITLE_SIZE)
+            .mid_top_of(ids.canvas)
+            .set(ids.menu_header, ui);
+
+        if let Some(new_music) = widget::Slider::new(f32::from(curr_options.music_level), 0.0, 100.0)
+            .label("Music Level")
+            .down_from(ids.menu_header, Self::MARGIN)
+            .padded_w_of(ids.menu_header, -Self::MARGIN)
+            .align_middle_x_of(ids.menu_header)
+            .set(ids.music_slider, ui) {
+            curr_options.music_level = new_music as u8;
+            sound::SOUND.poke_options(curr_options);
+        }
+
+        if let Some(new_sound) = widget::Slider::new(f32::from(curr_options.sound_level), 0.0, 100.0)
+            .label("Sound Level")
+            .down_from(ids.music_slider, Self::MARGIN)
+            .w_of(ids.music_slider)
+            .align_middle_x_of(ids.music_slider)
+            .set(ids.sound_slider, ui) {
+            curr_options.sound_level = new_sound as u8;
+            sound::SOUND.poke_options(curr_options);
+        }
+
+        let save_button = widget::Button::new()
+            .label("Save")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .mid_bottom_of(ids.canvas)
+            .set(ids.save_button, ui);
+        if save_button.was_clicked() {
+            defer!(self.save_options());
+        }
+
+        let main_menu_button = widget::Button::new()
+            .label("Main Menu")
+            .wh(Self::BUTTON_DIMENSIONS)
+            .color(conrod_core::color::WHITE.with_alpha(0.4))
+            .label_color(colors::DARK.into())
+            .top_left_of(ids.canvas)
+            .set(ids.main_menu_button, ui);
+        if main_menu_button.was_clicked() {
+            defer!(self.main_menu());
+        }
+
+        None
     }
 }
 
