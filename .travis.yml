@@ -8,7 +8,7 @@ cache:
   timeout: 1000
 filter_secrets: false
 os:
-  - linux
+  # - linux
   - osx
   - windows
 before_install:
