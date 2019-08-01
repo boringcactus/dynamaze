@@ -6,16 +6,16 @@ cargo build --release
 mkdir dist
 cp -r assets dist/
 cp "$DISCORD_GAME_SDK_PATH"/lib/x86_64/* dist/
-if [[ "$TRAVIS_OS_NAME" = "windows" ]]; then
-    SUFFIX=.exe
+if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then
+  SUFFIX=.exe
 else
-    SUFFIX=
+  SUFFIX=
 fi
 cp target/release/dynamaze$SUFFIX dist/
-if [[ "$TRAVIS_OS_NAME" = "osx" ]]; then
-    BUTLER_DIST=darwin
+if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+  BUTLER_DIST=darwin
 else
-    BUTLER_DIST=$TRAVIS_OS_NAME
+  BUTLER_DIST=$TRAVIS_OS_NAME
 fi
 curl -L -o butler.zip https://broth.itch.ovh/butler/$BUTLER_DIST-amd64/LATEST/archive/default
 unzip butler.zip
