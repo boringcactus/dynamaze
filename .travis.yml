@@ -19,7 +19,7 @@ before_install:
   - curl -LO https://dl-game-sdk.discordapp.net/latest/discord_game_sdk.zip
   - unzip discord_game_sdk.zip
   - popd
-  - rustup component add clippy
+  - rustup component add clippy rustfmt
 script:
   - cargo test
   - cargo clippy
