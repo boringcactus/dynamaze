@@ -22,3 +22,6 @@ gilrs = "0.7.1"
 discord_game_sdk = "0.3.1"
 log = "0.4.8"
 env_logger = "0.6.2"
+
+[patch.crates-io]
+bindgen = { git = "https://github.com/rust-lang/rust-bindgen", tag = "v0.50.0" }

@@ -154,7 +154,7 @@ dependencies = [
 [[package]]
 name = "bindgen"
 version = "0.50.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/rust-lang/rust-bindgen?tag=v0.50.0#d7898170fb8feadcab1940c2ecfbac2510780552"
 dependencies = [
  "bitflags 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cexpr 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -545,7 +545,7 @@ name = "discord_game_sdk_sys"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "bindgen 0.50.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bindgen 0.50.0 (git+https://github.com/rust-lang/rust-bindgen?tag=v0.50.0)",
 ]
 
 [[package]]
@@ -2307,7 +2307,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum base-x 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "76f4eae81729e69bb1819a26c6caac956cc429238388091f98cb6cd858f16443"
 "checksum bincode 1.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "9f04a5e50dc80b3d5d35320889053637d15011aed5e66b66b37ae798c65da6f7"
 "checksum bindgen 0.32.3 (registry+https://github.com/rust-lang/crates.io-index)" = "8b242e11a8f446f5fc7b76b37e81d737cabca562a927bd33766dac55b5f1177f"
-"checksum bindgen 0.50.0 (registry+https://github.com/rust-lang/crates.io-index)" = "65a913de3fa2fa95f2c593bb7e33b1be1ce1ce8a83f34b6bb02e6f01400b96cc"
+"checksum bindgen 0.50.0 (git+https://github.com/rust-lang/rust-bindgen?tag=v0.50.0)" = "<none>"
 "checksum bitflags 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "3d155346769a6855b86399e9bc3814ab343cd3d62c7e985113d46a0ec3c281fd"
 "checksum block 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a"
 "checksum bumpalo 2.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2cd43d82f27d68911e6ee11ee791fb248f138f5d69424dc02e098d4f152b0b05"
