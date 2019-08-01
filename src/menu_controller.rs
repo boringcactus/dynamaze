@@ -1,9 +1,13 @@
 //! Menu / global state controller
 extern crate clipboard;
 
+use std::collections::VecDeque;
+use std::ffi::CString;
 use std::sync::{Arc, RwLock};
 
 use clipboard::{ClipboardContext, ClipboardProvider};
+use discord_game_sdk::event::activities::Join;
+use discord_game_sdk::event::lobbies::MemberConnect;
 use piston::input::{GenericEvent, Key};
 use rand::prelude::*;
 
@@ -11,8 +15,9 @@ use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
 use crate::anim;
 use crate::colors;
 use crate::demo;
+use crate::discord::{Activity, DiscordHandle};
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
-use crate::net::{self, Message, MessageCtrl};
+use crate::net::{Message, MessageCtrl};
 use crate::options;
 use crate::sound;
 use crate::tutorial;
@@ -32,6 +37,7 @@ widget_ids! {
         start_button,
         color_demo,
         new_local_button,
+        copy_secret_button,
         main_menu_button,
         error_text,
         music_slider,
@@ -75,40 +81,50 @@ impl GameController {
         self.state = GameState::InGame(tutorial::new_conn_state(self.player_id));
     }
 
-    fn host(&mut self) {
-        let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
+    fn host(&mut self, discord: &mut DiscordHandle) {
+        let state = NetGameState::Lobby(LobbyInfo::new(self.player_id, discord.my_name()));
         let state = Arc::new(RwLock::new(state));
-        let sender = net::run_host(state.clone(), self.player_id);
-        anim::STATE.write().unwrap().set_send(sender.clone());
+        discord.create_lobby();
         let conn_state = ConnectedState {
             state,
-            sender,
+            outbox: VecDeque::new(),
         };
         self.state = GameState::InGame(conn_state);
     }
 
     fn connect(&mut self) {
-        self.state = GameState::ConnectMenu("127.0.0.1:12543".into());
+        self.state = GameState::ConnectMenu("".into());
     }
 
     fn enter_options(&mut self) {
         self.state = GameState::Options(options::HANDLE.fetch().clone());
     }
 
-    fn do_connect(&mut self) {
+    fn do_connect(&mut self, discord: &mut DiscordHandle) {
         if let GameState::ConnectMenu(ref address) = self.state {
             let state = NetGameState::Error("Connecting...".to_string());
             let state = Arc::new(RwLock::new(state));
-            let mut sender = net::run_guest(address, state.clone(), self.player_id);
-            anim::STATE.write().unwrap().set_send(sender.clone());
-            let player = Player::new("Guesty McGuestface".into(), random(), self.player_id);
-            NetGameState::join_lobby(&mut sender, player);
+            discord.join_lobby(address.clone());
+            let player = Player::new(discord.my_name(), random(), self.player_id);
+            let mut outbox = VecDeque::new();
+            outbox.push_back(Message::JoinLobby(player).into());
             let conn_state = ConnectedState {
-                sender,
                 state,
+                outbox,
             };
             self.state = GameState::InGame(conn_state);
         }
+    }
+
+    /// Handle an incoming Join event from Discord
+    pub fn handle_join(&mut self, join: Join, discord: &mut DiscordHandle) {
+        self.state = GameState::ConnectMenu(join.secret);
+        self.do_connect(discord);
+    }
+
+    /// Handle a member connection event from Discord
+    pub fn handle_connect(&mut self, _connect: MemberConnect, _discord: &mut DiscordHandle) {
+        self.broadcast_state();
     }
 
     fn save_options(&mut self) {
@@ -121,59 +137,42 @@ impl GameController {
 
     fn randomize_color(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let sender = &mut conn_state.sender;
             let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(self.player_id);
+            let outbox = &mut conn_state.outbox;
             if let NetGameState::Lobby(ref mut info) = *state {
                 let player = info.player_mut(&self.player_id);
                 player.color = random();
-                if is_host {
-                    drop(state);
-                    self.broadcast_state();
-                } else {
-                    let message = Message::EditPlayer(self.player_id, player.clone());
-                    sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
-                }
+                let message = Message::EditPlayer(self.player_id, player.clone());
+                outbox.push_back(message.into());
             }
         }
     }
 
     fn set_own_name(&mut self, new_name: &str) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let sender = &mut conn_state.sender;
+            let outbox = &mut conn_state.outbox;
             let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
                 let player = info.player_mut(&self.player_id);
                 player.name = new_name.to_string();
-                if is_host {
-                    drop(state);
-                    self.broadcast_state();
-                } else {
-                    let message = Message::EditPlayer(self.player_id, player.clone());
-                    sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
-                }
+                let message = Message::EditPlayer(self.player_id, player.clone());
+                outbox.push_back(message.into());
             }
         }
     }
 
     fn new_local_player(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let sender = &mut conn_state.sender;
+            let outbox = &mut conn_state.outbox;
             let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
-                let me = info.player(&self.player_id);
-                let child = Player::new_child(me.name.clone(), me.color, random(), me.id);
-                info.guests.push(child.clone());
-                if is_host {
-                    drop(state);
-                    self.broadcast_state();
-                } else {
-                    sender.try_send(Message::JoinLobby(child).into()).map_err(|_| ()).expect("Failed to pass message")
+                if let Some(me) = info.player(&self.player_id) {
+                    let child = Player::new_child(me.name.clone(), me.color, random(), me.id);
+                    info.players.push(child.clone());
+                    outbox.push_back(Message::JoinLobby(child).into());
                 }
             }
         }
@@ -183,21 +182,32 @@ impl GameController {
         if let GameState::InGame(ref mut conn_state) = self.state {
             let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
-                if is_host {
-                    let players = info.players_cloned();
-                    // TODO edit these
-                    let settings = BoardSettings {
-                        width: 7,
-                        height: 7,
-                        score_limit: 10,
-                    };
-                    let board_controller = BoardController::new(settings, players, info.host.id);
-                    let net_state = NetGameState::Active(board_controller);
-                    *state = net_state;
-                    drop(state);
-                    self.broadcast_state();
+                let players = info.players.clone();
+                // TODO edit these
+                let settings = BoardSettings {
+                    width: 7,
+                    height: 7,
+                    score_limit: 10,
+                };
+                let board_controller = BoardController::new(settings, players);
+                let net_state = NetGameState::Active(board_controller);
+                *state = net_state;
+                drop(state);
+                self.broadcast_state();
+            }
+        }
+    }
+
+    fn copy_secret(&self) {
+        if let GameState::InGame(ref conn_state) = self.state {
+            let state = &conn_state.state;
+            let state = state.read().expect("Failed to lock state");
+            if let NetGameState::Lobby(ref info) = *state {
+                let secret = &info.join_secret;
+                if let Some(ref secret) = secret {
+                    let mut ctx: ClipboardContext = ClipboardProvider::new().expect("Failed to copy");
+                    ctx.set_contents(secret.clone()).expect("Failed to copy");
                 }
             }
         }
@@ -205,20 +215,68 @@ impl GameController {
 
     fn main_menu(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let sender = &mut conn_state.sender;
-            sender.try_send(MessageCtrl::Disconnect).map_err(|e| println!("{:?}", e)).unwrap_or(());
+            let outbox = &mut conn_state.outbox;
+            outbox.push_back(MessageCtrl::Disconnect);
             println!("Attempted to disconnect");
         }
         sound::SOUND.fetch_volume();
         self.state = GameState::MainMenu;
     }
 
+    /// Retrieves current game state for Discord
+    pub fn activity(&self, discord: &mut DiscordHandle) -> Activity {
+        let mut result = Activity::empty();
+        match self.state {
+            GameState::MainMenu | GameState::Options(_) | GameState::ConnectMenu(_) | GameState::HardError(_) => {
+                let state = CString::new("In Menus").unwrap();
+                result.with_state(&state);
+            }
+            GameState::InGame(ref state) => {
+                let state = state.state.read().unwrap();
+                match *state {
+                    NetGameState::Lobby(ref lobby) => {
+                        let state = CString::new("In Lobby").unwrap();
+                        result.with_state(&state);
+                        result.with_party_amount((lobby.players.len()) as i32);
+                        result.with_party_capacity(crate::MAX_PLAYERS as i32);
+
+                        if let Some((id, secret)) = discord.get_id_and_secret() {
+                            let id = format!("{}", id);
+                            let id = CString::new(id).unwrap();
+                            result.with_party_id(&id);
+                            let secret = CString::new(secret).unwrap();
+                            result.with_join_secret(&secret);
+                        }
+                    }
+                    NetGameState::Active(ref board) => {
+                        let state = CString::new("In Game").unwrap();
+                        result.with_state(&state);
+                        result.with_party_amount(board.players.len() as i32);
+                        result.with_party_capacity(board.players.len() as i32);
+                    }
+                    NetGameState::Error(_) | NetGameState::GameOver(_) => {
+                        let state = CString::new("In Menus").unwrap();
+                        result.with_state(&state);
+                    }
+                }
+            }
+        }
+        result
+    }
+
     /// Handles events
-    pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E) {
+    pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E, discord: &mut DiscordHandle) {
         use piston::input::Button;
 
         if let Some(args) = e.update_args() {
             anim::STATE.write().unwrap().advance_by(args.dt);
+
+            if let GameState::InGame(ref state) = self.state {
+                let mut state = state.state.write().unwrap();
+                if let NetGameState::Lobby(ref mut lobby) = *state {
+                    lobby.join_secret = discord.get_id_and_secret().map(|(_, x)| x);
+                }
+            }
         }
 
         // TODO only do this when a turn actually ends
@@ -275,6 +333,7 @@ impl GameController {
                 }
             }
             GameState::InGame(ref mut conn_state) => {
+                let outbox = &mut conn_state.outbox;
                 let state = &mut conn_state.state;
                 let (broadcast, new_state, new_net_state) = {
                     let mut state = state.write().expect("Failed to lock state");
@@ -283,12 +342,11 @@ impl GameController {
                             (false, None, None)
                         }
                         NetGameState::Active(ref mut board_controller) => {
-                            let state_dirty = board_controller.event(&view.board_view, e, self.player_id);
+                            let state_dirty = board_controller.event(&view.board_view, e, self.player_id, outbox);
                             if state_dirty {
                                 if let Some(winner) = board_controller.winner() {
                                     let info = GameOverInfo {
                                         winner: winner.clone(),
-                                        host_id: board_controller.host_id,
                                     };
                                     (true, None, Some(NetGameState::GameOver(info)))
                                 } else {
@@ -322,18 +380,54 @@ impl GameController {
         }
     }
 
+    /// Handles an incoming network message from the given user ID
+    pub fn handle_incoming(&mut self, message: Message) {
+        if let GameState::InGame(ref mut state) = self.state {
+            let outbox = &mut state.outbox;
+            let mut state = state.state.write().expect("Failed to acquire state");
+            match message {
+                Message::JoinLobby(player) => {
+                    if let NetGameState::Lobby(ref mut lobby_info) = *state {
+                        lobby_info.players.push(player);
+                        outbox.push_back(MessageCtrl::send(Message::State(state.clone())));
+                    }
+                }
+                Message::EditPlayer(id, player) => {
+                    if let NetGameState::Lobby(ref mut lobby_info) = *state {
+                        lobby_info.players.iter_mut().filter(|p| p.id == id).for_each(|p| *p = player.clone());
+                    }
+                }
+                Message::State(new_state) => {
+                    // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
+                    *state = new_state;
+                }
+                Message::Anim(sync) => {
+                    anim::STATE.write().unwrap().apply(sync);
+                }
+            }
+        }
+    }
+
+    /// Sends all pending messages through the given Discord handle
+    pub fn send_all(&mut self, discord: &mut DiscordHandle) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let outbox = &mut conn_state.outbox;
+            discord.drain_messages(outbox);
+        }
+    }
+
     fn broadcast_state(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
-            let sender = &mut conn_state.sender;
+            let outbox = &mut conn_state.outbox;
             let state = &mut conn_state.state;
             let state = state.read().expect("Failed to lock state");
             let message = Message::State(state.clone());
-            sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+            outbox.push_back(message.into());
         }
     }
 
     /// Run Conrod GUI
-    pub fn gui(&mut self, ui: &mut conrod_core::UiCell, ids: &Ids) {
+    pub fn gui(&mut self, ui: &mut conrod_core::UiCell, ids: &Ids, discord: &mut DiscordHandle) {
         use conrod_core::{widget, Colorable, Labelable, Positionable, Sizeable, Widget};
 
         const MARGIN: conrod_core::Scalar = 30.0;
@@ -381,7 +475,7 @@ impl GameController {
                     .down_from(ids.tutorial_button, MARGIN)
                     .set(ids.host_button, ui);
                 for _host in host_button {
-                    self.host();
+                    self.host(discord);
                 }
 
                 let connect_button = widget::Button::new()
@@ -438,7 +532,7 @@ impl GameController {
                             self.state = GameState::ConnectMenu(new_text);
                         }
                         widget::text_box::Event::Enter => {
-                            self.do_connect();
+                            self.do_connect(discord);
                         }
                     }
                 }
@@ -452,29 +546,15 @@ impl GameController {
                     .down_from(ids.ip_box, MARGIN)
                     .set(ids.connect_button, ui);
                 for _press in connect_button {
-                    self.do_connect();
+                    self.do_connect(discord);
                 }
             }
             GameState::InGame(ref conn_state) => {
                 let state = &conn_state.state;
                 let state = state.read().expect("Failed to lock state");
-                let is_host = state.is_host(self.player_id);
                 match *state {
                     NetGameState::Lobby(ref info) => {
-                        let status = if is_host {
-                            let local_piece = match info.local_addr {
-                                Ok(ref addr) => format!("Local: {}", addr),
-                                Err(ref err) => format!("Local on port {} - error: {}", crate::net::LOCAL_PORT, err),
-                            };
-                            let remote_piece = match info.remote_addr {
-                                Ok(ref addr) => format!("Remote: {}", addr),
-                                Err(ref err) => format!("Auto port forwarding failed: {}", err),
-                            };
-                            format!("Hosting lobby\n{}\n{}", local_piece, remote_piece)
-                        } else {
-                            "Connected to lobby".into()
-                        };
-                        widget::Text::new(&status)
+                        widget::Text::new("Connected to lobby")
                             .color(colors::DARK.into())
                             .font_size(SUBTITLE_SIZE)
                             .mid_top_of(ids.canvas)
@@ -493,7 +573,9 @@ impl GameController {
 
                         let me = info.player(&self.player_id);
 
-                        let name_box = widget::TextBox::new(&me.name)
+                        let no_name = "loading...".to_string();
+                        let my_name = me.map(|x| &x.name).unwrap_or(&no_name);
+                        let name_box = widget::TextBox::new(&my_name)
                             .color(conrod_core::color::WHITE.with_alpha(0.4))
                             .text_color(colors::PURPLE.into())
                             .w(BUTTON_DIMENSIONS[0])
@@ -510,8 +592,9 @@ impl GameController {
                             }
                         }
 
+                        let my_color = me.map(|x| x.color).unwrap_or(colors::DARK);
                         widget::Circle::fill(MARGIN / 2.0)
-                            .color(me.color.into())
+                            .color(my_color.into())
                             .align_middle_y_of(ids.name_box)
                             .left_from(ids.name_box, MARGIN)
                             .set(ids.color_demo, ui);
@@ -540,17 +623,27 @@ impl GameController {
                             defer!(self.new_local_player());
                         }
 
-                        if is_host {
-                            let start_button = widget::Button::new()
-                                .label("Begin Game")
-                                .color(conrod_core::color::WHITE.with_alpha(0.4))
-                                .label_color(colors::DARK.into())
-                                .wh(BUTTON_DIMENSIONS)
-                                .mid_bottom_with_margin_on(ids.canvas, MARGIN)
-                                .set(ids.start_button, ui);
-                            for _press in start_button {
-                                defer!(self.start_hosted_game());
-                            }
+                        let copy_secret_button = widget::Button::new()
+                            .label("Copy Join Secret")
+                            .color(conrod_core::color::WHITE.with_alpha(0.4))
+                            .label_color(colors::DARK.into())
+                            .wh(BUTTON_DIMENSIONS)
+                            .align_right_of(ids.name_box)
+                            .down_from(ids.new_local_button, MARGIN)
+                            .set(ids.copy_secret_button, ui);
+                        for _press in copy_secret_button {
+                            defer!(self.copy_secret());
+                        }
+
+                        let start_button = widget::Button::new()
+                            .label("Begin Game")
+                            .color(conrod_core::color::WHITE.with_alpha(0.4))
+                            .label_color(colors::DARK.into())
+                            .wh(BUTTON_DIMENSIONS)
+                            .mid_bottom_with_margin_on(ids.canvas, MARGIN)
+                            .set(ids.start_button, ui);
+                        for _press in start_button {
+                            defer!(self.start_hosted_game());
                         }
                     }
                     NetGameState::Active(_) => {}

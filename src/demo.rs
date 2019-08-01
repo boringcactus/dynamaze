@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::convert::TryInto;
 use std::sync::{Arc, RwLock};
 
@@ -8,7 +8,6 @@ use crate::board_controller::{BoardController, BoardSettings};
 use crate::colors;
 use crate::menu::{ConnectedState, GameState, NetGameState};
 use crate::menu_controller::GameController;
-use crate::net;
 
 /// Checks to see if the game was launched with the `--demo` argument.
 pub fn is_demo() -> bool {
@@ -29,13 +28,12 @@ pub fn new_controller() -> GameController {
         Player::new_child("Player 3".to_string(), colors::Color(0.6, 0.2, 0.4), 3, player_id),
         Player::new_child("Player 4".to_string(), colors::Color(0.4, 0.6, 0.2), 4, player_id),
     ];
-    let board = BoardController::new(settings, players, player_id);
+    let board = BoardController::new(settings, players);
     let state = NetGameState::Active(board);
     let state = Arc::new(RwLock::new(state));
-    let sender = net::run_dummy(state.clone());
     let state = ConnectedState {
-        sender,
         state,
+        outbox: VecDeque::new(),
     };
     let state = GameState::InGame(state);
     GameController {

@@ -6,7 +6,7 @@ use piston::input::GenericEvent;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{Board, BoardView, Direction, Player, PlayerID};
+use crate::{Board, BoardView, Direction, Outbox, Player, PlayerID};
 use crate::anim::{self, AnimSync, RotateDir};
 use crate::demo;
 
@@ -40,8 +40,6 @@ pub struct BoardController {
     pub highlighted_tile: (usize, usize),
     /// Players
     pub players: BTreeMap<PlayerID, Player>,
-    /// Host
-    pub host_id: PlayerID,
     /// Turn order
     pub turn_order: Vec<PlayerID>,
     /// Current turn state
@@ -52,7 +50,7 @@ pub struct BoardController {
 
 impl BoardController {
     /// Creates a new board controller with a new board
-    pub fn new(settings: BoardSettings, player_list: Vec<Player>, host_id: PlayerID) -> BoardController {
+    pub fn new(settings: BoardSettings, player_list: Vec<Player>) -> BoardController {
         let width = settings.width;
         let height = settings.height;
         let mut player_ids: Vec<PlayerID> = player_list.iter().map(|p| p.id).collect();
@@ -67,7 +65,6 @@ impl BoardController {
             cursor_pos: [0.0; 2],
             highlighted_tile,
             players,
-            host_id,
             turn_order: player_ids,
             turn_state: TurnState::InsertTile,
             settings,
@@ -101,13 +98,13 @@ impl BoardController {
         old_loose_tile_position != new_loose_tile_position
     }
 
-    fn rotate_loose_tile(&mut self, dir: RotateDir) -> bool {
+    fn rotate_loose_tile(&mut self, dir: RotateDir, outbox: &mut Outbox) -> bool {
         self.board.loose_tile.rotate(match dir {
             RotateDir::CW => Direction::East,
             RotateDir::CCW => Direction::West,
         });
         let sync = AnimSync::Rotate(dir);
-        anim::STATE.write().unwrap().apply_send(sync);
+        anim::STATE.write().unwrap().apply_send(sync, outbox);
         true
     }
 
@@ -120,7 +117,7 @@ impl BoardController {
     }
 
     /// Handles events, returns whether or not the state may have changed
-    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID) -> bool {
+    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID, outbox: &mut Outbox) -> bool {
         use piston::input::{Button, MouseButton, Key};
 
         // never do anything if this player is not the active player
@@ -157,9 +154,9 @@ impl BoardController {
                     Key::Right => self.handle_insert_key_direction(Direction::East),
                     Key::Up => self.handle_insert_key_direction(Direction::North),
                     Key::Down => self.handle_insert_key_direction(Direction::South),
-                    Key::LShift => self.rotate_loose_tile(RotateDir::CCW),
-                    Key::RShift => self.rotate_loose_tile(RotateDir::CW),
-                    Key::Space => self.insert_loose_tile(),
+                    Key::LShift => self.rotate_loose_tile(RotateDir::CCW, outbox),
+                    Key::RShift => self.rotate_loose_tile(RotateDir::CW, outbox),
+                    Key::Space => self.insert_loose_tile(outbox),
                     _ => false
                 };
                 dirty = dirty || newly_dirty;
@@ -184,10 +181,10 @@ impl BoardController {
                 // if the tile isn't aligned with a guide, or the button wasn't left...
                 if button != MouseButton::Left {
                     // rotate the loose tile
-                    self.rotate_loose_tile(RotateDir::CW);
+                    self.rotate_loose_tile(RotateDir::CW, outbox);
                 } else {
                     // otherwise, insert the tile
-                    self.insert_loose_tile();
+                    self.insert_loose_tile(outbox);
                 }
                 dirty = true;
             } else if let Some(pos) = view.in_tile(&self.cursor_pos, self) {
@@ -229,8 +226,8 @@ impl BoardController {
         false
     }
 
-    fn insert_loose_tile(&mut self) -> bool {
-        self.board.insert_loose_tile();
+    fn insert_loose_tile(&mut self, outbox: &mut Outbox) -> bool {
+        self.board.insert_loose_tile(outbox);
         // advance turn state
         self.turn_state = TurnState::MoveToken;
         true

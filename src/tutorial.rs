@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::sync::{Arc, RwLock};
 
@@ -7,7 +8,6 @@ use crate::{Board, Direction, Player, PlayerID};
 use crate::board_controller::{BoardController, BoardSettings};
 use crate::colors;
 use crate::menu::{ConnectedState, NetGameState};
-use crate::net;
 
 pub fn new_conn_state(player_id: PlayerID) -> ConnectedState {
     let settings = BoardSettings {
@@ -16,16 +16,15 @@ pub fn new_conn_state(player_id: PlayerID) -> ConnectedState {
         height: 3,
     };
     let players = vec![
-        Player::new("Player 1".to_string(), colors::Color(0.2, 0.4, 0.6), player_id),
+        Player::new("Player".to_string(), colors::Color(0.2, 0.4, 0.6), player_id),
     ];
-    let mut board = BoardController::new(settings, players, player_id);
+    let mut board = BoardController::new(settings, players);
     TutorialStep::First.apply(&mut board.board);
     let state = NetGameState::Active(board);
     let state = Arc::new(RwLock::new(state));
-    let sender = net::run_dummy(state.clone());
     ConnectedState {
-        sender,
         state,
+        outbox: VecDeque::new(),
     }
 }
 
