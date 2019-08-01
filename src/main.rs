@@ -130,7 +130,7 @@ fn main() {
 
     let ids = menu_controller::Ids::new(ui.widget_id_generator());
 
-//    let mut gamepad = gamepad::Handler::new();
+    let mut gamepad = gamepad::Handler::new();
 
     let mut discord = DiscordHandle::new().expect("Failed to connect to Discord");
     discord.register();
@@ -154,9 +154,9 @@ fn main() {
         // if updating...
         if e.update_args().is_some() {
             // peek for gamepad events (remapped to keyboard events automatically)
-//            while let Some(e) = gamepad.next_event() {
-//                game_controller.event(&game_view, &e, &mut discord);
-//            }
+            while let Some(e) = gamepad.next_event() {
+                game_controller.event(&game_view, &e, &mut discord);
+            }
             // poke Discord
             discord.run_callbacks();
             // send Discord activity
