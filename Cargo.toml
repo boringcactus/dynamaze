@@ -24,4 +24,4 @@ log = "0.4.8"
 env_logger = "0.6.2"
 
 [patch.crates-io]
-bindgen = { git = "https://github.com/rust-lang/rust-bindgen", tag = "v0.50.0" }
+coreaudio-sys = { git = "https://github.com/boringcactus/coreaudio-sys" }
