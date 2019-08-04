@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-//#![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 //! DynaMaze, a multiplayer game about traversing a shifting maze
 
