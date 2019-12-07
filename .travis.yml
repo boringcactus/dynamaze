@@ -8,18 +8,12 @@ cache:
   timeout: 1000
 filter_secrets: false
 os:
-  # - linux
-  #- osx
+  - linux
+  - osx
   - windows
 before_install:
   - if [ $TRAVIS_OS_NAME = linux ]; then sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev; fi
-  - mkdir discord
-  - pushd discord
-  - export DISCORD_GAME_SDK_PATH=$(pwd)
-  - curl -LO https://dl-game-sdk.discordapp.net/latest/discord_game_sdk.zip
-  - unzip discord_game_sdk.zip
-  - popd
-  - rustup component add clippy rustfmt
+  - rustup component add clippy
 script:
   - cargo test
   - cargo clippy

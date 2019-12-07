@@ -2,9 +2,10 @@ use std::f64::consts::FRAC_PI_2;
 use std::sync::RwLock;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
-use crate::{Direction, Outbox};
-use crate::net::Message;
+use crate::Direction;
+use crate::net::{Message, MessageCtrl};
 
 /// Tracks state of the target stripe animation
 pub struct TargetStripeState {
@@ -136,6 +137,7 @@ pub struct AnimGlobalState {
     pub target_stripe: TargetStripeState,
     pub loose_rotate: LooseRotateState,
     pub loose_insert: LooseInsertState,
+    net_send: Option<mpsc::Sender<MessageCtrl>>
 }
 
 impl AnimGlobalState {
@@ -144,6 +146,7 @@ impl AnimGlobalState {
             target_stripe: TargetStripeState::new(),
             loose_rotate: LooseRotateState::new(),
             loose_insert: LooseInsertState::new(),
+            net_send: None,
         }
     }
 
@@ -153,6 +156,10 @@ impl AnimGlobalState {
         self.loose_insert.advance_by(ticks);
     }
 
+    pub fn set_send(&mut self, send: mpsc::Sender<MessageCtrl>) {
+        self.net_send = Some(send)
+    }
+
     pub fn apply(&mut self, msg: AnimSync) {
         match msg {
             AnimSync::Rotate(dir) => self.loose_rotate.reset(dir),
@@ -160,9 +167,12 @@ impl AnimGlobalState {
         }
     }
 
-    pub fn apply_send(&mut self, sync: AnimSync, outbox: &mut Outbox) {
+    pub fn apply_send(&mut self, sync: AnimSync) {
         self.apply(sync.clone());
-        outbox.push_back(Message::Anim(sync).into());
+        if let Some(ref mut send) = self.net_send {
+            let message = Message::Anim(sync);
+            send.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+        }
     }
 }
 

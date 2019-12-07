@@ -35,7 +35,7 @@ impl GameView {
                 match *state {
                     NetGameState::Lobby(ref info) => {
                         let mut transform = c.transform.trans(0.0, 150.0);
-                        for player in &info.players {
+                        for player in info.players_ref() {
                             // TODO don't do this
                             let is_me = player.id == controller.player_id;
                             let x_offset = if is_me { 20.0 } else { 0.0 };

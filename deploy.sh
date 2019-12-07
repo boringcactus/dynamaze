@@ -5,7 +5,6 @@ IFS=$'\n\t'
 cargo build --release
 mkdir dist
 cp -r assets dist/
-cp "$DISCORD_GAME_SDK_PATH"/lib/x86_64/* dist/
 if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then
   SUFFIX=.exe
 else
