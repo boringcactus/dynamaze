@@ -11,6 +11,7 @@ client = [
     'piston2d-graphics',
     'pistoncore-glutin_window',
     'piston2d-opengl_graphics',
+    'clipboard',
     'rodio',
     'conrod_core',
     'conrod_piston',
