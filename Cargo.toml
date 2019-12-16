@@ -5,7 +5,6 @@ authors = ["Melody Horn <melody@boringcactus.com>"]
 edition = "2018"
 
 [features]
-default = ['client']
 client = [
     'piston',
     'piston2d-graphics',

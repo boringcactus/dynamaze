@@ -2,7 +2,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-cargo build --release
+cargo build --release --features client
 mkdir dist
 cp -r assets dist/
 if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then

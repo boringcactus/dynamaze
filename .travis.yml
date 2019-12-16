@@ -16,7 +16,7 @@ before_install:
 script:
   - cargo test
   - cargo clippy
-  - cargo build --release
+  - cargo build --release --features client
 deploy:
   skip_cleanup: true
   provider: script
