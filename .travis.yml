@@ -2,7 +2,6 @@ language: rust
 rust:
   - stable
   - beta
-  - nightly
 cache:
   cargo: true
   timeout: 1000
@@ -28,4 +27,3 @@ deploy:
 matrix:
   allow_failures:
     - rust: beta
-    - rust: nightly
