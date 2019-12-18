@@ -1,7 +1,6 @@
 #![allow(clippy::unnecessary_cast)]
 
-use conrod_core::Color as Ccolor;
-use graphics::types::Color as Gcolor;
+use quicksilver::graphics::{Background, Color as Qcolor};
 use rand::distributions::{Distribution, Standard};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -9,15 +8,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Color(pub f32, pub f32, pub f32);
 
-impl Into<Gcolor> for Color {
-    fn into(self) -> Gcolor {
-        [self.0, self.1, self.2, 1.0]
+impl Into<Qcolor> for Color {
+    fn into(self) -> Qcolor {
+        Qcolor { r: self.0, g: self.1, b: self.2, a: 1.0 }
     }
 }
 
-impl Into<Ccolor> for Color {
-    fn into(self) -> Ccolor {
-        Ccolor::Rgba(self.0, self.1, self.2, 1.0)
+impl Into<Background<'_>> for Color {
+    fn into(self) -> Background<'static> {
+        Background::Col(self.into())
     }
 }
 

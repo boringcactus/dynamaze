@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 cargo build --release --features client
 mkdir dist
-cp -r assets dist/
+cp -r static dist/
 if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then
   SUFFIX=.exe
 else

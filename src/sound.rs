@@ -22,8 +22,8 @@ pub enum Music {
 impl Into<File> for Music {
     fn into(self) -> File {
         match self {
-            Music::Menu => File::open("assets/BlueEther.mp3").expect("Failed to open audio"),
-            Music::InGame => File::open("assets/ElectricSweater.mp3").expect("Failed to open audio"),
+            Music::Menu => File::open("BlueEther.mp3").expect("Failed to open audio"),
+            Music::InGame => File::open("ElectricSweater.mp3").expect("Failed to open audio"),
         }
     }
 }

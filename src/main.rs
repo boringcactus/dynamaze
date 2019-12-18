@@ -4,25 +4,22 @@
 //! DynaMaze, a multiplayer game about traversing a shifting maze
 
 #[macro_use]
-extern crate conrod_core;
-extern crate conrod_piston;
-extern crate glutin_window;
-extern crate graphics;
-#[macro_use]
 extern crate lazy_static;
-extern crate opengl_graphics;
-extern crate piston;
+// Draw some multi-colored geometry to the screen
+// This is a good place to get a feel for the basic structure of a Quicksilver app
+extern crate quicksilver;
 extern crate rand;
 extern crate serde;
 extern crate tokio;
 
 use std::env;
 
-use glutin_window::GlutinWindow;
-use opengl_graphics::{Filter, GlGraphics, GlyphCache, OpenGL, Texture, TextureSettings};
-use piston::event_loop::*;
-use piston::input::*;
-use piston::window::{Window, WindowSettings};
+use quicksilver::{
+    geom::{Circle, Line, Rectangle, Transform, Triangle, Vector},
+    graphics::{Background::Col, Color},
+    lifecycle::{run, Settings, State, Window},
+    Result,
+};
 
 pub use crate::board::Board;
 pub use crate::board_controller::{BoardController, BoardSettings};
@@ -38,7 +35,7 @@ mod board_controller;
 mod board_view;
 mod colors;
 mod demo;
-mod gamepad;
+//mod gamepad;
 mod menu;
 mod menu_controller;
 mod menu_view;
@@ -49,6 +46,57 @@ mod sound;
 mod tile;
 mod tutorial;
 
+// A unit struct that we're going to use to run the Quicksilver functions
+// If we wanted to store persistent state, we would put it in here.
+struct DrawGeometry;
+
+impl State for DrawGeometry {
+    // Initialize the struct
+    fn new() -> Result<DrawGeometry> {
+        Ok(DrawGeometry)
+    }
+
+    fn draw(&mut self, window: &mut Window) -> Result<()> {
+        // Remove any lingering artifacts from the previous frame
+        window.clear(Color::WHITE)?;
+        // Draw a rectangle with a top-left corner at (100, 100) and a width and height of 32 with
+        // a blue background
+        window.draw(&Rectangle::new((100, 100), (32, 32)), Col(Color::BLUE));
+        // Draw another rectangle, rotated by 45 degrees, with a z-height of 10
+        window.draw_ex(&Rectangle::new((400, 300), (32, 32)), Col(Color::BLUE), Transform::rotate(45), 10);
+        // Draw a circle with its center at (400, 300) and a radius of 100, with a background of
+        // green
+        window.draw(&Circle::new((400, 300), 100), Col(Color::GREEN));
+        // Draw a line with a thickness of 2 pixels, a red background,
+        // and a z-height of 5
+        window.draw_ex(
+            &Line::new((50, 80), (600, 450)).with_thickness(2.0),
+            Col(Color::RED),
+            Transform::IDENTITY,
+            5,
+        );
+        // Draw a triangle with a red background, rotated by 45 degrees, and scaled down to half
+        // its size
+        window.draw_ex(
+            &Triangle::new((500, 50), (450, 100), (650, 150)),
+            Col(Color::RED),
+            Transform::rotate(45) * Transform::scale((0.5, 0.5)),
+            0,
+        );
+        // We completed with no errors
+        Ok(())
+    }
+}
+
+// The main isn't that important in Quicksilver: it just serves as an entrypoint into the event
+// loop
+fn main() {
+    // Run with DrawGeometry as the event handler, with a window title of 'Draw Geometry' and a
+    // size of (800, 600)
+    run::<GameController>("DynaMaze", Vector::new(800, 600), Settings::default());
+}
+
+#[cfg(unix)]
 fn main() {
     let opengl = OpenGL::V3_2;
     let window_size = [800, 600];
@@ -73,13 +121,13 @@ fn main() {
     let mut game_view = GameView::new([window_size[0].into(), window_size[1].into()]);
 
     let texture_settings = TextureSettings::new().filter(Filter::Nearest);
-    let mut glyphs = GlyphCache::new("assets/FiraSans-Regular.ttf", (), texture_settings)
+    let mut glyphs = GlyphCache::new("static/FiraSans-Regular.ttf", (), texture_settings)
         .expect("Could not load font");
 
     let mut ui = conrod_core::UiBuilder::new([window_size[0].into(), window_size[1].into()])
         .theme(game_view.theme())
         .build();
-    ui.fonts.insert_from_file("assets/FiraSans-Regular.ttf").unwrap();
+    ui.fonts.insert_from_file("static/FiraSans-Regular.ttf").unwrap();
 
     let mut text_vertex_data = Vec::new();
     let (mut glyph_cache, mut text_texture_cache) = {

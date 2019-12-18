@@ -44,6 +44,7 @@ pub fn new_controller() -> GameController {
         shift: false,
         ctrl: false,
         last_player: None,
+        view: crate::GameView::new(),
     }
 }
 

@@ -84,8 +84,8 @@ impl ops::MulAssign for Direction {
     }
 }
 
-impl ops::Mul<Direction> for [f64; 2] {
-    type Output = [f64; 2];
+impl ops::Mul<Direction> for [f32; 2] {
+    type Output = [f32; 2];
 
     fn mul(self, rhs: Direction) -> Self::Output {
         let [x, y] = self;

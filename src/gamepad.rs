@@ -6,14 +6,6 @@ use gilrs::ev::{
     Button as GilButton,
     EventType as GilEventType,
 };
-use piston::input::{
-    Button as PistonButton,
-    ButtonArgs as PistonButtonArgs,
-    ButtonState as PistonButtonState,
-    Event as PistonEvent,
-    Input as PistonInput,
-    Key,
-};
 
 enum Axis {
     X,

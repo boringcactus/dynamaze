@@ -4,7 +4,11 @@ extern crate clipboard;
 use std::sync::{Arc, RwLock};
 
 use clipboard::{ClipboardContext, ClipboardProvider};
-use piston::input::{GenericEvent, Key};
+use quicksilver::{
+    input::{ButtonState, Key},
+    lifecycle::{Event, State, Window},
+    Result,
+};
 use rand::prelude::*;
 
 use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
@@ -16,29 +20,6 @@ use crate::net::{self, Message, MessageCtrl};
 use crate::options;
 use crate::sound;
 use crate::tutorial;
-
-widget_ids! {
-    pub struct Ids {
-        canvas,
-        menu_header,
-        tutorial_button,
-        host_button,
-        connect_button,
-        options_button,
-        ip_box,
-        lobby_name,
-        color_button,
-        name_box,
-        start_button,
-        color_demo,
-        new_local_button,
-        main_menu_button,
-        error_text,
-        music_slider,
-        sound_slider,
-        save_button,
-    }
-}
 
 /// Handles events for DynaMaze game
 pub struct GameController {
@@ -52,25 +33,11 @@ pub struct GameController {
     pub ctrl: bool,
     /// Active player ID the last time the state was checked for a notification
     pub last_player: Option<PlayerID>,
+    /// Game view settings
+    pub view: GameView,
 }
 
 impl GameController {
-    /// Creates a new GameController
-    pub fn new() -> GameController {
-        if demo::is_demo() {
-            return demo::new_controller();
-        }
-        let player_id = random();
-        sound::SOUND.play_music(sound::Music::Menu);
-        GameController {
-            state: GameState::MainMenu,
-            player_id,
-            shift: false,
-            ctrl: false,
-            last_player: None,
-        }
-    }
-
     fn tutorial(&mut self) {
         self.state = GameState::InGame(tutorial::new_conn_state(self.player_id));
     }
@@ -213,115 +180,6 @@ impl GameController {
         self.state = GameState::MainMenu;
     }
 
-    /// Handles events
-    pub fn event<E: GenericEvent>(&mut self, view: &GameView, e: &E) {
-        use piston::input::Button;
-
-        if let Some(args) = e.update_args() {
-            anim::STATE.write().unwrap().advance_by(args.dt);
-        }
-
-        // TODO only do this when a turn actually ends
-        if e.update_args().is_some() {
-            let old_last_player = self.last_player;
-
-            let music = match self.state {
-                GameState::MainMenu | GameState::ConnectMenu(_) |
-                GameState::HardError(_) | GameState::Options(_) => {
-                    self.last_player = None;
-                    sound::Music::Menu
-                }
-                GameState::InGame(ref conn_state) => {
-                    let state = conn_state.state.read().unwrap();
-                    match *state {
-                        NetGameState::Active(ref board) => {
-                            self.last_player = Some(board.active_player_id());
-                            sound::Music::InGame
-                        }
-                        _ => {
-                            self.last_player = None;
-                            sound::Music::Menu
-                        }
-                    }
-                }
-            };
-            sound::SOUND.play_music(music);
-
-            if old_last_player != self.last_player && self.last_player == Some(self.player_id) {
-                sound::SOUND.play_sound(sound::Sound::YourTurn);
-            }
-        }
-
-        if let Some(state) = e.button_args() {
-            if state.button == Button::Keyboard(Key::LShift) || state.button == Button::Keyboard(Key::RShift) {
-                use piston::input::ButtonState;
-                self.shift = state.state == ButtonState::Press;
-            }
-            if state.button == Button::Keyboard(Key::LCtrl) || state.button == Button::Keyboard(Key::RCtrl) {
-                use piston::input::ButtonState;
-                self.ctrl = state.state == ButtonState::Press;
-            }
-        }
-
-        match self.state {
-            GameState::MainMenu => {}
-            GameState::ConnectMenu(ref mut address) => {
-                // shout out to conrod for not supporting Ctrl-V in text boxes, what the fuck
-                if let Some(Button::Keyboard(Key::V)) = e.press_args() {
-                    if self.ctrl {
-                        let mut ctx: ClipboardContext = ClipboardProvider::new().expect("Failed to paste");
-                        *address = ctx.get_contents().expect("Failed to paste");
-                    }
-                }
-            }
-            GameState::InGame(ref mut conn_state) => {
-                let state = &mut conn_state.state;
-                let (broadcast, new_state, new_net_state) = {
-                    let mut state = state.write().expect("Failed to lock state");
-                    match *state {
-                        NetGameState::Lobby(_) => {
-                            (false, None, None)
-                        }
-                        NetGameState::Active(ref mut board_controller) => {
-                            let state_dirty = board_controller.event(&view.board_view, e, self.player_id);
-                            if state_dirty {
-                                if let Some(winner) = board_controller.winner() {
-                                    let info = GameOverInfo {
-                                        winner: winner.clone(),
-                                        host_id: board_controller.host_id,
-                                    };
-                                    (true, None, Some(NetGameState::GameOver(info)))
-                                } else {
-                                    (true, None, None)
-                                }
-                            } else {
-                                (false, None, None)
-                            }
-                        }
-                        NetGameState::GameOver(_) => {
-                            (false, None, None)
-                        }
-                        NetGameState::Error(_) => {
-                            (false, None, None)
-                        }
-                    }
-                };
-                if let Some(ns) = new_net_state {
-                    let mut state = state.write().expect("Failed to lock state");
-                    *state = ns;
-                }
-                if let Some(s) = new_state {
-                    self.state = s;
-                }
-                if broadcast {
-                    self.broadcast_state();
-                }
-            }
-            GameState::HardError(_) => {}
-            GameState::Options(_) => {}
-        }
-    }
-
     fn broadcast_state(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
             let sender = &mut conn_state.sender;
@@ -333,9 +191,8 @@ impl GameController {
     }
 
     /// Run Conrod GUI
+    #[cfg(unix)]
     pub fn gui(&mut self, ui: &mut conrod_core::UiCell, ids: &Ids) {
-        use conrod_core::{widget, Colorable, Labelable, Positionable, Sizeable, Widget};
-
         const MARGIN: conrod_core::Scalar = 30.0;
         const TITLE_SIZE: conrod_core::FontSize = 42;
         const SUBTITLE_SIZE: conrod_core::FontSize = 32;
@@ -681,8 +538,130 @@ impl GameController {
     }
 }
 
-impl Default for GameController {
-    fn default() -> Self {
-        Self::new()
+impl State for GameController {
+    fn new() -> Result<Self> {
+        if demo::is_demo() {
+            return Ok(demo::new_controller());
+        }
+        let player_id = random();
+        sound::SOUND.play_music(sound::Music::Menu);
+        Ok(GameController {
+            state: GameState::MainMenu,
+            player_id,
+            shift: false,
+            ctrl: false,
+            last_player: None,
+            view: GameView::new(),
+        })
+    }
+
+    fn update(&mut self, window: &mut Window) -> Result<()> {
+        // TODO actually track delta time
+        anim::STATE.write().unwrap().advance_by(1.0 / 60.0);
+
+        let old_last_player = self.last_player;
+
+        let music = match self.state {
+            GameState::MainMenu | GameState::ConnectMenu(_) |
+            GameState::HardError(_) | GameState::Options(_) => {
+                self.last_player = None;
+                sound::Music::Menu
+            }
+            GameState::InGame(ref conn_state) => {
+                let state = conn_state.state.read().unwrap();
+                match *state {
+                    NetGameState::Active(ref board) => {
+                        self.last_player = Some(board.active_player_id());
+                        sound::Music::InGame
+                    }
+                    _ => {
+                        self.last_player = None;
+                        sound::Music::Menu
+                    }
+                }
+            }
+        };
+        sound::SOUND.play_music(music);
+
+        if old_last_player != self.last_player && self.last_player == Some(self.player_id) {
+            sound::SOUND.play_sound(sound::Sound::YourTurn);
+        }
+
+        Ok(())
+    }
+
+    fn event(&mut self, event: &Event, window: &mut Window) -> Result<()> {
+        if let Event::Key(key, state) = event {
+            if *key == Key::LShift || *key == Key::RShift {
+                self.shift = state.is_down();
+            }
+            if *key == Key::LControl || *key == Key::RControl {
+                self.ctrl = state.is_down();
+            }
+        }
+
+        match self.state {
+            GameState::MainMenu => {}
+            GameState::ConnectMenu(ref mut address) => {
+                // shout out to conrod for not supporting Ctrl-V in text boxes, what the fuck
+                if let Event::Key(Key::V, ButtonState::Pressed) = event {
+                    if self.ctrl {
+                        let mut ctx: ClipboardContext = ClipboardProvider::new().expect("Failed to paste");
+                        *address = ctx.get_contents().expect("Failed to paste");
+                    }
+                }
+            }
+            GameState::InGame(ref mut conn_state) => {
+                let state = &mut conn_state.state;
+                let (broadcast, new_state, new_net_state) = {
+                    let mut state = state.write().expect("Failed to lock state");
+                    match *state {
+                        NetGameState::Lobby(_) => {
+                            (false, None, None)
+                        }
+                        NetGameState::Active(ref mut board_controller) => {
+                            let state_dirty = board_controller.event(&self.view.board_view, event, self.player_id, window);
+                            if state_dirty {
+                                if let Some(winner) = board_controller.winner() {
+                                    let info = GameOverInfo {
+                                        winner: winner.clone(),
+                                        host_id: board_controller.host_id,
+                                    };
+                                    (true, None, Some(NetGameState::GameOver(info)))
+                                } else {
+                                    (true, None, None)
+                                }
+                            } else {
+                                (false, None, None)
+                            }
+                        }
+                        NetGameState::GameOver(_) => {
+                            (false, None, None)
+                        }
+                        NetGameState::Error(_) => {
+                            (false, None, None)
+                        }
+                    }
+                };
+                if let Some(ns) = new_net_state {
+                    let mut state = state.write().expect("Failed to lock state");
+                    *state = ns;
+                }
+                if let Some(s) = new_state {
+                    self.state = s;
+                }
+                if broadcast {
+                    self.broadcast_state();
+                }
+            }
+            GameState::HardError(_) => {}
+            GameState::Options(_) => {}
+        }
+        Ok(())
+    }
+
+    fn draw(&mut self, window: &mut Window) -> Result<()> {
+        window.clear(colors::LIGHT.into())?;
+        self.view.draw(self, window)
     }
 }

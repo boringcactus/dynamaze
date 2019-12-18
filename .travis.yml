@@ -11,11 +11,11 @@ os:
   - osx
   - windows
 before_install:
-  - if [ $TRAVIS_OS_NAME = linux ]; then sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev; fi
+  - if [ $TRAVIS_OS_NAME = linux ]; then sudo apt-get update && sudo apt-get install -y libudev-dev zlib1g-dev alsa libasound2-dev; fi
   - rustup component add clippy
 script:
-  - cargo test
-  - cargo clippy
+  - cargo test --features client
+  - cargo clippy --features client
   - cargo build --release --features client
 deploy:
   skip_cleanup: true

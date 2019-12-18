@@ -2,7 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use piston::input::GenericEvent;
+use quicksilver::{
+    input::{ButtonState, Key, MouseButton},
+    lifecycle::{Event, Window},
+};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -35,7 +38,7 @@ pub struct BoardController {
     /// Board state
     pub board: Board,
     /// Mouse position
-    pub cursor_pos: [f64; 2],
+    pub cursor_pos: [f32; 2],
     /// Highlighted tile
     pub highlighted_tile: (usize, usize),
     /// Players
@@ -120,9 +123,7 @@ impl BoardController {
     }
 
     /// Handles events, returns whether or not the state may have changed
-    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID) -> bool {
-        use piston::input::{Button, MouseButton, Key};
-
+    pub fn event(&mut self, view: &BoardView, event: &Event, local_id: PlayerID, window: &Window) -> bool {
         // never do anything if this player is not the active player
         if !self.local_turn(local_id) {
             return false;
@@ -135,21 +136,21 @@ impl BoardController {
 
         let mut dirty = false;
 
-        if let Some(pos) = e.mouse_cursor_args() {
-            self.cursor_pos = pos;
+        if let Event::MouseMoved(pos) = event {
+            self.cursor_pos = [pos.x, pos.y];
             if should_insert {
-                if let Some(new_loose_tile_position) = view.in_insert_guide(&pos, self) {
+                if let Some(new_loose_tile_position) = view.in_insert_guide(&self.cursor_pos, self, window) {
                     dirty = dirty || self.move_loose_tile(new_loose_tile_position);
                 }
             }
             if should_move {
                 let old_highlighted_tile = self.highlighted_tile;
-                self.highlighted_tile = view.in_tile(&pos, self).unwrap_or(self.highlighted_tile);
+                self.highlighted_tile = view.in_tile(&self.cursor_pos, self, window).unwrap_or(self.highlighted_tile);
                 dirty = dirty || old_highlighted_tile != self.highlighted_tile;
             }
         }
 
-        if let Some(Button::Keyboard(key)) = e.press_args() {
+        if let Event::Key(key, ButtonState::Pressed) = event {
             // handle insert
             if should_insert {
                 let newly_dirty = match key {
@@ -178,11 +179,11 @@ impl BoardController {
             }
         }
 
-        if let Some(Button::Mouse(button)) = e.press_args() {
+        if let Event::MouseButton(button, ButtonState::Pressed) = event {
             // if clicked inside the loose tile and should be inserting...
-            if view.in_loose_tile(&self.cursor_pos, self) && should_insert {
+            if view.in_loose_tile(&self.cursor_pos, self, window) && should_insert {
                 // if the tile isn't aligned with a guide, or the button wasn't left...
-                if button != MouseButton::Left {
+                if *button != MouseButton::Left {
                     // rotate the loose tile
                     self.rotate_loose_tile(RotateDir::CW);
                 } else {
@@ -190,7 +191,7 @@ impl BoardController {
                     self.insert_loose_tile();
                 }
                 dirty = true;
-            } else if let Some(pos) = view.in_tile(&self.cursor_pos, self) {
+            } else if let Some(pos) = view.in_tile(&self.cursor_pos, self, window) {
                 // if clicked inside a tile, if we should be moving...
                 if should_move {
                     dirty = dirty || self.attempt_move(pos);
