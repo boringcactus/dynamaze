@@ -5,12 +5,7 @@ use std::ops;
 
 use quicksilver::{
     geom::{Circle, Line, Rectangle, Transform, Triangle},
-    graphics::{Mesh, ShapeRenderer},
     lifecycle::Window,
-    lyon::{
-        path::Path,
-        tessellation::{FillOptions, FillTessellator},
-    },
 };
 
 use crate::{BoardController, colors::{self, Color}, Direction, PlayerID, Tile};
@@ -19,8 +14,8 @@ use crate::board_controller::TurnState;
 
 #[derive(Clone, Debug)]
 struct Diagonal {
-    ll: [f32; 2],
-    ur: [f32; 2],
+    ll: (f32, f32),
+    ur: (f32, f32),
 }
 
 impl ops::Add<f32> for Diagonal {
@@ -28,8 +23,8 @@ impl ops::Add<f32> for Diagonal {
 
     fn add(self, rhs: f32) -> Self::Output {
         Diagonal {
-            ll: [self.ll[0] + rhs, self.ll[1] + rhs],
-            ur: [self.ur[0] + rhs, self.ur[1] + rhs],
+            ll: (self.ll.0 + rhs, self.ll.1 + rhs),
+            ur: (self.ur.0 + rhs, self.ur.1 + rhs),
         }
     }
 }
@@ -58,33 +53,33 @@ impl Extents {
 
     fn diagonal(&self) -> Diagonal {
         Diagonal {
-            ll: [self.west, self.south],
-            ur: [self.east, self.north],
+            ll: (self.west, self.south),
+            ur: (self.east, self.north),
         }
     }
 
     fn clamp_diagonal(&self, line: Diagonal) -> Diagonal {
         // find equation of line as x + y = k (works for either point since slope assumed to be 1)
         let ll = line.ll;
-        let k = ll[0] + ll[1];
+        let k = ll.0 + ll.1;
         // if k < west + north then too small so use northwest corner
         let (ll, ur) = if k < self.west + self.north {
-            let point = [self.west, self.north];
+            let point = (self.west, self.north);
             (point, point)
         } else if k > self.east + self.south {
             // if k > east + south then too big so use southwest corner
-            let point = [self.east, self.south];
+            let point = (self.east, self.south);
             (point, point)
         } else if k < self.north + self.east {
             // if less than halfway, before main diagonal, so trust north and west already
             let y_at_west = k - self.west;
             let x_at_north = k - self.north;
-            ([self.west, y_at_west], [x_at_north, self.north])
+            ((self.west, y_at_west), (x_at_north, self.north))
         } else {
             // if more than halfway, after main diagonal, so trust south and east already
             let y_at_east = k - self.east;
             let x_at_south = k - self.south;
-            ([x_at_south, self.south], [self.east, y_at_east])
+            ((x_at_south, self.south), (self.east, y_at_east))
         };
         Diagonal { ll, ur }
     }
@@ -330,7 +325,7 @@ impl BoardView {
         // draw board edge
         // TODO fix, probably
         let board_edge = Rectangle::new((board.west, board.north), (board_width, board_height));
-        window.draw(&board_edge, settings.board_edge_color);
+        window.draw_ex(&board_edge, settings.board_edge_color, Transform::IDENTITY, -1);
 
         // draw insert guides
         self.draw_insert_guides(controller, local_id, window)?;
@@ -463,29 +458,19 @@ impl BoardView {
                 .map(|x| outer.clamp_diagonal(x));
             let polys = diagonals.clone().step_by(2).zip(diagonals.skip(1).step_by(2));
 
-            let mut builder = Path::builder();
             for stripe in polys {
-                builder.polygon(&[stripe.0.ur.into(), stripe.1.ur.into(), stripe.1.ll.into(), stripe.0.ll.into()]);
+                let tri1 = Triangle::new(stripe.0.ur, stripe.1.ur, stripe.1.ll);
+                let tri2 = Triangle::new(stripe.1.ur, stripe.1.ll, stripe.0.ll);
+                window.draw_ex(&tri1, background_color, transform.clone(), 1);
+                window.draw_ex(&tri2, background_color, transform.clone(), 1);
             }
-            let path = builder.build();
-
-            window.mesh().extend(&{
-                let mut logo = Mesh::new();
-                let mut logo_shape = ShapeRenderer::new(&mut logo, color.into());
-                logo_shape.set_transform(transform.clone());
-                let mut tessellator = FillTessellator::new();
-                tessellator
-                    .tessellate_path(&path, &FillOptions::tolerance(0.01), &mut logo_shape)
-                    .unwrap();
-                logo
-            });
         }
 
         let wall_size = (wall_width, wall_width);
-        window.draw_ex(&Rectangle::new((outer.west, outer.north), wall_size.clone()), settings.wall_color, transform.clone(), 0);
-        window.draw_ex(&Rectangle::new((inner.east, outer.north), wall_size.clone()), settings.wall_color, transform.clone(), 0);
-        window.draw_ex(&Rectangle::new((outer.west, inner.south), wall_size.clone()), settings.wall_color, transform.clone(), 0);
-        window.draw_ex(&Rectangle::new((inner.east, inner.south), wall_size.clone()), settings.wall_color, transform.clone(), 0);
+        window.draw_ex(&Rectangle::new((outer.west, outer.north), wall_size.clone()), settings.wall_color, transform.clone(), 2);
+        window.draw_ex(&Rectangle::new((inner.east, outer.north), wall_size.clone()), settings.wall_color, transform.clone(), 2);
+        window.draw_ex(&Rectangle::new((outer.west, inner.south), wall_size.clone()), settings.wall_color, transform.clone(), 2);
+        window.draw_ex(&Rectangle::new((inner.east, inner.south), wall_size.clone()), settings.wall_color, transform.clone(), 2);
         let walled_directions = tile.walls();
         for d in walled_directions {
             let (pos, size) = match d {
@@ -494,16 +479,16 @@ impl BoardView {
                 Direction::East => ((inner.east, outer.north), (wall_width, cell_size)),
                 Direction::West => ((outer.west, outer.north), (wall_width, cell_size)),
             };
-            window.draw_ex(&Rectangle::new(pos, size), settings.wall_color, transform.clone(), 0);
+            window.draw_ex(&Rectangle::new(pos, size), settings.wall_color, transform.clone(), 2);
         }
 
         if draw_border {
             let border_width = wall_width / 3.0;
             let inner = outer.clone() - border_width;
-            window.draw_ex(&Rectangle::new((outer.west, outer.north), (cell_size, border_width)), settings.text_color, transform.clone(), 0);
-            window.draw_ex(&Rectangle::new((outer.west, inner.south), (cell_size, border_width)), settings.text_color, transform.clone(), 0);
-            window.draw_ex(&Rectangle::new((inner.east, outer.north), (border_width, cell_size)), settings.text_color, transform.clone(), 0);
-            window.draw_ex(&Rectangle::new((outer.west, outer.north), (border_width, cell_size)), settings.text_color, transform.clone(), 0);
+            window.draw_ex(&Rectangle::new((outer.west, outer.north), (cell_size, border_width)), settings.text_color, transform.clone(), 3);
+            window.draw_ex(&Rectangle::new((outer.west, inner.south), (cell_size, border_width)), settings.text_color, transform.clone(), 3);
+            window.draw_ex(&Rectangle::new((inner.east, outer.north), (border_width, cell_size)), settings.text_color, transform.clone(), 3);
+            window.draw_ex(&Rectangle::new((outer.west, outer.north), (border_width, cell_size)), settings.text_color, transform.clone(), 3);
         }
     }
 
