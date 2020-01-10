@@ -13,7 +13,7 @@ use crate::sound::SoundEngine;
 
 /// Checks to see if the game was launched with the `--demo` argument.
 pub fn is_demo() -> bool {
-    true
+    false
 }
 
 /// Creates a demo-friendly GameController
@@ -45,6 +45,7 @@ pub fn new_controller() -> GameController {
         last_player: None,
         view: GameView::new(),
         sound_engine: SoundEngine::new(),
+        actions: Default::default(),
     }
 }
 

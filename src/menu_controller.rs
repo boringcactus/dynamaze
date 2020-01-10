@@ -1,7 +1,8 @@
 //! Menu / global state controller
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
+use gloo::events::EventListener;
 use rand::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -16,12 +17,12 @@ use crate::options;
 use crate::sound::{self, SoundEngine};
 use crate::tutorial;
 
-fn get_context(main: &web_sys::Element) -> Context {
-    let canvas = main.query_selector("canvas").unwrap_throw().unwrap_throw();
+fn get_context(main: &web_sys::Element) -> Option<Context> {
+    let canvas = main.query_selector("canvas").unwrap_throw()?;
     let canvas = canvas.dyn_ref::<web_sys::HtmlCanvasElement>().unwrap_throw();
     let ctx = canvas.get_context("2d").unwrap_throw().unwrap_throw();
     let ctx = ctx.dyn_ref::<Context>().unwrap_throw();
-    ctx.clone()
+    Some(ctx.clone())
 }
 
 /// Handles events for DynaMaze game
@@ -36,6 +37,8 @@ pub struct GameController {
     pub view: GameView,
     /// Sound controller
     pub sound_engine: SoundEngine,
+    /// Action queue
+    pub actions: Arc<Mutex<Vec<Box<dyn FnOnce(&mut GameController)>>>>,
 }
 
 impl GameController {
@@ -53,6 +56,7 @@ impl GameController {
             last_player: None,
             view: GameView::new(),
             sound_engine,
+            actions: Default::default(),
         }
     }
 
@@ -229,6 +233,15 @@ impl GameController {
         if old_last_player != self.last_player && self.last_player == Some(self.player_id) {
             self.sound_engine.play_sound(sound::Sound::YourTurn);
         }
+
+        // drain one action at a time
+        let action = {
+            let mut actions = self.actions.lock().unwrap();
+            actions.pop()
+        };
+        if let Some(action) = action {
+            action(self);
+        }
     }
 
     /// Handles click event
@@ -239,7 +252,7 @@ impl GameController {
             let (broadcast, new_state, new_net_state) = {
                 let mut state = state.write().expect("Failed to lock state");
                 if let NetGameState::Active(ref mut board_controller) = *state {
-                    let state_dirty = board_controller.on_click(event, self.player_id, &self.view.board_view, &get_context(main));
+                    let state_dirty = board_controller.on_click(event, self.player_id, &self.view.board_view, &get_context(main).unwrap_throw());
                     web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("clicked in board"));
                     if state_dirty {
                         event.prevent_default();
@@ -279,7 +292,7 @@ impl GameController {
             let (broadcast, new_state, new_net_state) = {
                 let mut state = state.write().expect("Failed to lock state");
                 if let NetGameState::Active(ref mut board_controller) = *state {
-                    let state_dirty = board_controller.on_mousemove(event, self.player_id, &self.view.board_view, &get_context(main));
+                    let state_dirty = board_controller.on_mousemove(event, self.player_id, &self.view.board_view, &get_context(main).unwrap_throw());
                     if state_dirty {
                         if let Some(winner) = board_controller.winner() {
                             let info = GameOverInfo {
@@ -350,15 +363,10 @@ impl GameController {
 
     /// Draw to the given element
     pub fn draw(&mut self, main: &web_sys::Element) {
-        if main.child_element_count() == 0 {
-            let document = main.owner_document().unwrap_throw();
-            let canvas = document.create_element("canvas").unwrap_throw();
-            let canvas = canvas.dyn_ref::<web_sys::HtmlCanvasElement>().unwrap_throw();
-            canvas.set_width(1000);
-            canvas.set_height(800);
-            main.append_with_node_1(&canvas);
+        self.build_dom(main);
+        if let Some(ctx) = get_context(main) {
+            self.view.draw(self, &ctx);
         }
-        self.view.draw(self, &get_context(main));
     }
 
     fn broadcast_state(&mut self) {
@@ -373,127 +381,126 @@ impl GameController {
         }
     }
 
-    /// Run Conrod GUI
-    #[cfg(unix)]
-    pub fn gui(&mut self, ui: &mut conrod_core::UiCell, ids: &Ids) {
-        const MARGIN: conrod_core::Scalar = 30.0;
-        const TITLE_SIZE: conrod_core::FontSize = 42;
-        const SUBTITLE_SIZE: conrod_core::FontSize = 32;
-        const BUTTON_DIMENSIONS: conrod_core::Dimensions = [200.0, 60.0];
-
-        widget::Canvas::new().pad(MARGIN).set(ids.canvas, ui);
-
-        let mut deferred_actions: Vec<Box<dyn Fn(&mut Self)>> = vec![];
-
-        macro_rules! defer {
-            (self.$e:ident($( $a:expr ),*)) => {
-                #[allow(clippy::redundant_closure)]
-                deferred_actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)))
+    fn curr_class(&self) -> &'static str {
+        match self.state {
+            GameState::MainMenu => {
+                "main-menu"
+            }
+            GameState::ConnectMenu(_) => {
+                "connect-menu"
+            }
+            GameState::InGame(ref conn_state) => {
+                let state = &conn_state.state;
+                let state = state.read().expect("Failed to lock state");
+                match *state {
+                    NetGameState::Lobby(ref info) => {
+                        "lobby"
+                    }
+                    NetGameState::Active(_) => {
+                        "active"
+                    }
+                    NetGameState::GameOver(ref info) => {
+                        "game-over"
+                    }
+                    NetGameState::Error(ref text) => {
+                        "error"
+                    }
+                }
+            }
+            GameState::HardError(_) => {
+                "hard-error"
+            }
+            GameState::Options(_) => {
+                "options"
             }
         }
+    }
+
+    fn build_dom(&mut self, main: &web_sys::Element) {
+        let old_class = main.class_name();
+        let curr_class = self.curr_class();
+
+        // deferring actions is now more complicated
+        macro_rules! defer {
+            (self.$e:ident($( $a:expr ),*)) => {{
+                let actions = self.actions.clone();
+                move |_| {
+                    let mut actions = actions.lock().unwrap_throw();
+                    actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)))
+                }
+            }}
+        }
+
+        // if the UI doesn't need to be rebuilt from scratch, don't do anything
+        if old_class == curr_class {
+            return;
+        }
+        // if there's a wrong UI already...
+        if old_class != "" {
+            // nuke everything from orbit
+            main.set_inner_html("");
+        }
+        // give it the right class
+        main.set_class_name(curr_class);
+
+        // get ready to make some elements
+        let document = main.owner_document().unwrap_throw();
+
+        // TODO don't leak all the event listeners
 
         match self.state {
             GameState::MainMenu => {
-                widget::Text::new("DynaMaze")
-                    .color(colors::DARK.into())
-                    .font_size(TITLE_SIZE)
-                    .mid_top_of(ids.canvas)
-                    .set(ids.menu_header, ui);
+                let header = document.create_element("h1").unwrap_throw();
+                let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                header.set_inner_text("DynaMaze");
+                main.append_with_node_1(&header);
 
-                let tutorial_button = widget::Button::new()
-                    .label("Tutorial")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.menu_header, 3.0 * MARGIN)
-                    .set(ids.tutorial_button, ui);
-                for _ in tutorial_button {
-                    self.tutorial();
-                }
+                let tutorial = document.create_element("button").unwrap_throw();
+                let tutorial = tutorial.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                tutorial.set_inner_text("Tutorial");
+                main.append_with_node_1(&tutorial);
+                EventListener::once(&tutorial, "click", defer!(self.tutorial())).forget();
 
-                let host_button = widget::Button::new()
-                    .label("Host Game")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.tutorial_button, MARGIN)
-                    .set(ids.host_button, ui);
-                for _host in host_button {
-                    self.host();
-                }
+                let host = document.create_element("button").unwrap_throw();
+                let host = host.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                host.set_inner_text("Host Game");
+                main.append_with_node_1(&host);
+                EventListener::once(&host, "click", defer!(self.host())).forget();
 
-                let connect_button = widget::Button::new()
-                    .label("Join Game")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.host_button, MARGIN)
-                    .set(ids.connect_button, ui);
-                for _connect in connect_button {
-                    self.connect();
-                }
+                let connect = document.create_element("button").unwrap_throw();
+                let connect = connect.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                connect.set_inner_text("Join Game");
+                main.append_with_node_1(&connect);
+                EventListener::once(&connect, "click", defer!(self.connect())).forget();
 
-                let options_button = widget::Button::new()
-                    .label("Options")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.connect_button, MARGIN)
-                    .set(ids.options_button, ui);
-                for _options in options_button {
-                    self.enter_options();
-                }
+                let options = document.create_element("button").unwrap_throw();
+                let options = options.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                options.set_inner_text("Options");
+                main.append_with_node_1(&options);
+                EventListener::once(&options, "click", defer!(self.enter_options())).forget();
             }
             GameState::ConnectMenu(ref mut connect_addr) => {
-                widget::Text::new("Connect to Game")
-                    .color(colors::DARK.into())
-                    .font_size(SUBTITLE_SIZE)
-                    .mid_top_of(ids.canvas)
-                    .set(ids.menu_header, ui);
+                let header = document.create_element("h1").unwrap_throw();
+                let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                header.set_inner_text("Connect to Game");
+                main.append_with_node_1(&header);
 
-                let main_menu_button = widget::Button::new()
-                    .label("Main Menu")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .top_left_of(ids.canvas)
-                    .set(ids.main_menu_button, ui);
-                for _press in main_menu_button {
-                    defer!(self.main_menu());
-                }
+                let main_menu = document.create_element("button").unwrap_throw();
+                let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                main_menu.set_inner_text("Main Menu");
+                main.append_with_node_1(&main_menu);
+                EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
 
-                let text = widget::TextBox::new(connect_addr)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .text_color(colors::PURPLE.into())
-                    .align_middle_x_of(ids.canvas)
-                    .align_middle_y_of(ids.canvas)
-                    .set(ids.ip_box, ui);
-                for evt in text {
-                    match evt {
-                        widget::text_box::Event::Update(new_text) => {
-                            self.state = GameState::ConnectMenu(new_text);
-                        }
-                        widget::text_box::Event::Enter => {
-                            self.do_connect();
-                        }
-                    }
-                }
+                let connect_text = document.create_element("input").unwrap_throw();
+                let connect_text = connect_text.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                main.append_with_node_1(&connect_text);
+                // TODO handle Enter, probably with a form
 
-                let connect_button = widget::Button::new()
-                    .label("Connect")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .align_middle_x_of(ids.canvas)
-                    .down_from(ids.ip_box, MARGIN)
-                    .set(ids.connect_button, ui);
-                for _press in connect_button {
-                    self.do_connect();
-                }
+                let connect = document.create_element("button").unwrap_throw();
+                let connect = connect.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                connect.set_inner_text("Connect");
+                main.append_with_node_1(&connect);
+                EventListener::once(&connect, "click", defer!(self.do_connect())).forget();
             }
             GameState::InGame(ref conn_state) => {
                 let state = &conn_state.state;
@@ -514,209 +521,117 @@ impl GameController {
                         } else {
                             "Connected to lobby".into()
                         };
-                        widget::Text::new(&status)
-                            .color(colors::DARK.into())
-                            .font_size(SUBTITLE_SIZE)
-                            .mid_top_of(ids.canvas)
-                            .set(ids.menu_header, ui);
+                        let header = document.create_element("h1").unwrap_throw();
+                        let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        header.set_inner_text(&status);
+                        main.append_with_node_1(&header);
 
-                        let main_menu_button = widget::Button::new()
-                            .label("Main Menu")
-                            .wh(BUTTON_DIMENSIONS)
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .top_left_of(ids.canvas)
-                            .set(ids.main_menu_button, ui);
-                        for _press in main_menu_button {
-                            defer!(self.main_menu());
-                        }
+                        let main_menu = document.create_element("button").unwrap_throw();
+                        let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        main_menu.set_inner_text("Main Menu");
+                        main.append_with_node_1(&main_menu);
+                        EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
 
                         let me = info.player(&self.player_id);
 
-                        let name_box = widget::TextBox::new(&me.name)
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .text_color(colors::PURPLE.into())
-                            .w(BUTTON_DIMENSIONS[0])
-                            .align_right_of(ids.canvas)
-                            .down_from(ids.menu_header, MARGIN)
-                            .set(ids.name_box, ui);
-                        for evt in name_box {
-                            match evt {
-                                widget::text_box::Event::Update(new_text) => {
-                                    let text = new_text.clone();
-                                    defer!(self.set_own_name(&text));
-                                }
-                                widget::text_box::Event::Enter => {}
-                            }
-                        }
+                        let name_box = document.create_element("input").unwrap_throw();
+                        let name_box = name_box.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        name_box.set_attribute("value", &me.name);
+                        main.append_with_node_1(&name_box);
+                        // TODO catch changes with self.set_own_name()
 
-                        widget::Circle::fill(MARGIN / 2.0)
-                            .color(me.color.into())
-                            .align_middle_y_of(ids.name_box)
-                            .left_from(ids.name_box, MARGIN)
-                            .set(ids.color_demo, ui);
+                        // TODO circle with color me.color
 
-                        let color_button = widget::Button::new()
-                            .label("Randomize Color")
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .wh(BUTTON_DIMENSIONS)
-                            .align_right_of(ids.name_box)
-                            .down_from(ids.name_box, MARGIN)
-                            .set(ids.color_button, ui);
-                        for _press in color_button {
-                            defer!(self.randomize_color());
-                        }
+                        // TODO randomize color with self.randomize_color()
 
-                        let new_local_button = widget::Button::new()
-                            .label("Add Local Player")
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .wh(BUTTON_DIMENSIONS)
-                            .align_right_of(ids.name_box)
-                            .down_from(ids.color_button, MARGIN)
-                            .set(ids.new_local_button, ui);
-                        for _press in new_local_button {
-                            defer!(self.new_local_player());
-                        }
+                        // TODO add local player with self.new_local_player()
 
                         if is_host {
-                            let start_button = widget::Button::new()
-                                .label("Begin Game")
-                                .color(conrod_core::color::WHITE.with_alpha(0.4))
-                                .label_color(colors::DARK.into())
-                                .wh(BUTTON_DIMENSIONS)
-                                .mid_bottom_with_margin_on(ids.canvas, MARGIN)
-                                .set(ids.start_button, ui);
-                            for _press in start_button {
-                                defer!(self.start_hosted_game());
-                            }
+                            let start = document.create_element("button").unwrap_throw();
+                            let start = start.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                            start.set_inner_text("Begin Game");
+                            main.append_with_node_1(&start);
+                            EventListener::once(&start, "click", defer!(self.start_hosted_game())).forget();
                         }
                     }
-                    NetGameState::Active(_) => {}
+                    NetGameState::Active(_) => {
+                        let canvas = document.create_element("canvas").unwrap_throw();
+                        let canvas = canvas.dyn_ref::<web_sys::HtmlCanvasElement>().unwrap_throw();
+                        canvas.set_width(1000);
+                        canvas.set_height(800);
+                        main.append_with_node_1(&canvas);
+                    }
                     NetGameState::GameOver(ref info) => {
                         let text = format!("{} wins!", info.winner.name);
-                        widget::Text::new(&text)
-                            .color(colors::DARK.into())
-                            .font_size(SUBTITLE_SIZE)
-                            .mid_top_of(ids.canvas)
-                            .set(ids.menu_header, ui);
+                        let header = document.create_element("h1").unwrap_throw();
+                        let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        header.set_inner_text(&text);
+                        main.append_with_node_1(&header);
 
-                        // TODO just throw this in at the end for everything
-                        let main_menu_button = widget::Button::new()
-                            .label("Main Menu")
-                            .wh(BUTTON_DIMENSIONS)
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .top_left_of(ids.canvas)
-                            .set(ids.main_menu_button, ui);
-                        for _press in main_menu_button {
-                            defer!(self.main_menu());
-                        }
+                        let main_menu = document.create_element("button").unwrap_throw();
+                        let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        main_menu.set_inner_text("Main Menu");
+                        main.append_with_node_1(&main_menu);
+                        EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
                     }
                     NetGameState::Error(ref text) => {
-                        widget::Text::new("Error")
-                            .color(colors::DARK.into())
-                            .font_size(SUBTITLE_SIZE)
-                            .mid_top_of(ids.canvas)
-                            .set(ids.menu_header, ui);
+                        let header = document.create_element("h1").unwrap_throw();
+                        let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        header.set_inner_text("Error");
+                        main.append_with_node_1(&header);
 
-                        widget::Text::new(text)
-                            .color(colors::DARK.into())
-                            .align_middle_x_of(ids.menu_header)
-                            .down_from(ids.menu_header, MARGIN)
-                            .set(ids.error_text, ui);
+                        let body = document.create_element("p").unwrap_throw();
+                        let body = body.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        body.set_inner_text(text);
+                        main.append_with_node_1(&body);
 
-                        let main_menu_button = widget::Button::new()
-                            .label("Main Menu")
-                            .wh(BUTTON_DIMENSIONS)
-                            .color(conrod_core::color::WHITE.with_alpha(0.4))
-                            .label_color(colors::DARK.into())
-                            .top_left_of(ids.canvas)
-                            .set(ids.main_menu_button, ui);
-                        for _press in main_menu_button {
-                            defer!(self.main_menu());
-                        }
+                        let main_menu = document.create_element("button").unwrap_throw();
+                        let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        main_menu.set_inner_text("Main Menu");
+                        main.append_with_node_1(&main_menu);
+                        EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
                     }
                 }
             }
             GameState::HardError(ref text) => {
-                widget::Text::new("Error")
-                    .color(colors::DARK.into())
-                    .font_size(SUBTITLE_SIZE)
-                    .mid_top_of(ids.canvas)
-                    .set(ids.menu_header, ui);
+                let header = document.create_element("h1").unwrap_throw();
+                let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                header.set_inner_text("Error");
+                main.append_with_node_1(&header);
 
-                widget::Text::new(text)
-                    .color(colors::DARK.into())
-                    .align_middle_x_of(ids.menu_header)
-                    .down_from(ids.menu_header, MARGIN)
-                    .set(ids.error_text, ui);
+                let body = document.create_element("p").unwrap_throw();
+                let body = body.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                body.set_inner_text(text);
+                main.append_with_node_1(&body);
 
-                let main_menu_button = widget::Button::new()
-                    .label("Main Menu")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .top_left_of(ids.canvas)
-                    .set(ids.main_menu_button, ui);
-                for _press in main_menu_button {
-                    defer!(self.main_menu());
-                }
+                let main_menu = document.create_element("button").unwrap_throw();
+                let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                main_menu.set_inner_text("Main Menu");
+                main.append_with_node_1(&main_menu);
+                EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
             }
             GameState::Options(ref mut curr_options) => {
-                widget::Text::new("Options")
-                    .color(colors::DARK.into())
-                    .font_size(TITLE_SIZE)
-                    .mid_top_of(ids.canvas)
-                    .set(ids.menu_header, ui);
+                let header = document.create_element("h1").unwrap_throw();
+                let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                header.set_inner_text("Options");
+                main.append_with_node_1(&header);
 
-                if let Some(new_music) = widget::Slider::new(f32::from(curr_options.music_level), 0.0, 100.0)
-                    .label("Music Level")
-                    .down_from(ids.menu_header, MARGIN)
-                    .padded_w_of(ids.menu_header, -MARGIN)
-                    .align_middle_x_of(ids.menu_header)
-                    .set(ids.music_slider, ui) {
-                    curr_options.music_level = new_music as u8;
-                    sound::SOUND.poke_options(curr_options);
-                }
+                // TODO slider for music level with poke_options
 
-                if let Some(new_sound) = widget::Slider::new(f32::from(curr_options.sound_level), 0.0, 100.0)
-                    .label("Sound Level")
-                    .down_from(ids.music_slider, MARGIN)
-                    .w_of(ids.music_slider)
-                    .align_middle_x_of(ids.music_slider)
-                    .set(ids.sound_slider, ui) {
-                    curr_options.sound_level = new_sound as u8;
-                    sound::SOUND.poke_options(curr_options);
-                }
+                // TODO slider for sound level with poke_options
 
-                let save_button = widget::Button::new()
-                    .label("Save")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .mid_bottom_of(ids.canvas)
-                    .set(ids.save_button, ui);
-                for _press in save_button {
-                    defer!(self.save_options());
-                }
+                let save_button = document.create_element("button").unwrap_throw();
+                let save_button = save_button.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                save_button.set_inner_text("Save");
+                main.append_with_node_1(&save_button);
+                EventListener::once(&save_button, "click", defer!(self.save_options())).forget();
 
-                let main_menu_button = widget::Button::new()
-                    .label("Main Menu")
-                    .wh(BUTTON_DIMENSIONS)
-                    .color(conrod_core::color::WHITE.with_alpha(0.4))
-                    .label_color(colors::DARK.into())
-                    .top_left_of(ids.canvas)
-                    .set(ids.main_menu_button, ui);
-                for _press in main_menu_button {
-                    defer!(self.main_menu());
-                }
+                let main_menu = document.create_element("button").unwrap_throw();
+                let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                main_menu.set_inner_text("Main Menu");
+                main.append_with_node_1(&main_menu);
+                EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
             }
-        }
-
-        for action in deferred_actions {
-            action(self);
         }
     }
 }

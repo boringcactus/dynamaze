@@ -23,6 +23,7 @@ features = [
     "Element",
     "Event",
     "Node",
+    "HtmlElement",
     "HtmlCanvasElement",
     "MouseEvent",
     "KeyboardEvent",

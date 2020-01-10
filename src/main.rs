@@ -9,7 +9,6 @@ extern crate lazy_static;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use gloo::events::{EventListener, EventListenerOptions};
 use wasm_bindgen::JsCast;

@@ -1,7 +1,5 @@
 extern crate toml;
 
-use std::env;
-use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard};
 
 use serde::{Deserialize, Serialize};
