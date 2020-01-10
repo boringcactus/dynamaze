@@ -2,9 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use piston::input::GenericEvent;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use web_sys::CanvasRenderingContext2d as Context;
 
 use crate::{Board, BoardView, Direction, Player, PlayerID};
 use crate::anim::{self, AnimSync, RotateDir};
@@ -34,8 +34,6 @@ pub struct BoardSettings {
 pub struct BoardController {
     /// Board state
     pub board: Board,
-    /// Mouse position
-    pub cursor_pos: [f64; 2],
     /// Highlighted tile
     pub highlighted_tile: (usize, usize),
     /// Players
@@ -64,7 +62,6 @@ impl BoardController {
         let highlighted_tile = board.player_pos(player_ids[0]);
         BoardController {
             board,
-            cursor_pos: [0.0; 2],
             highlighted_tile,
             players,
             host_id,
@@ -119,10 +116,9 @@ impl BoardController {
         my_turn || child_turn
     }
 
-    /// Handles events, returns whether or not the state may have changed
-    pub fn event<E: GenericEvent>(&mut self, view: &BoardView, e: &E, local_id: PlayerID) -> bool {
-        use piston::input::{Button, MouseButton, Key};
-
+    /// Handles click event, returns whether or not the state may have changed
+    pub fn on_click(&mut self, event: &web_sys::MouseEvent, local_id: PlayerID, view: &BoardView, ctx: &Context) -> bool {
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("clicking in board"));
         // never do anything if this player is not the active player
         if !self.local_turn(local_id) {
             return false;
@@ -135,67 +131,115 @@ impl BoardController {
 
         let mut dirty = false;
 
-        if let Some(pos) = e.mouse_cursor_args() {
-            self.cursor_pos = pos;
-            if should_insert {
-                if let Some(new_loose_tile_position) = view.in_insert_guide(&pos, self) {
-                    dirty = dirty || self.move_loose_tile(new_loose_tile_position);
-                }
+        let button = event.button();
+        let pos = [event.offset_x() as f64, event.offset_y() as f64];
+
+        // if clicked inside the loose tile and should be inserting...
+        if view.in_loose_tile(&pos, self, ctx) && should_insert {
+            // if this was the primary button
+            if button == 0 {
+                // insert the tile
+                self.insert_loose_tile();
+            } else {
+                // otherwise, rotate the loose tile
+                self.rotate_loose_tile(RotateDir::CW);
             }
+            dirty = true;
+        } else if let Some(pos) = view.in_tile(&pos, self, ctx) {
+            // if clicked inside a tile, if we should be moving...
             if should_move {
-                let old_highlighted_tile = self.highlighted_tile;
-                self.highlighted_tile = view.in_tile(&pos, self).unwrap_or(self.highlighted_tile);
-                dirty = dirty || old_highlighted_tile != self.highlighted_tile;
+                dirty = dirty || self.attempt_move(pos);
             }
         }
 
-        if let Some(Button::Keyboard(key)) = e.press_args() {
-            // handle insert
-            if should_insert {
-                let newly_dirty = match key {
-                    Key::Left => self.handle_insert_key_direction(Direction::West),
-                    Key::Right => self.handle_insert_key_direction(Direction::East),
-                    Key::Up => self.handle_insert_key_direction(Direction::North),
-                    Key::Down => self.handle_insert_key_direction(Direction::South),
-                    Key::LShift => self.rotate_loose_tile(RotateDir::CCW),
-                    Key::RShift => self.rotate_loose_tile(RotateDir::CW),
-                    Key::Space => self.insert_loose_tile(),
-                    _ => false
-                };
-                dirty = dirty || newly_dirty;
-            }
-            // handle move
-            if should_move {
-                let newly_dirty = match key {
-                    Key::Left => self.handle_move_key_direction(Direction::West),
-                    Key::Right => self.handle_move_key_direction(Direction::East),
-                    Key::Up => self.handle_move_key_direction(Direction::North),
-                    Key::Down => self.handle_move_key_direction(Direction::South),
-                    Key::Space => self.attempt_move(self.highlighted_tile),
-                    _ => false
-                };
-                dirty = dirty || newly_dirty;
+        if let Some(tutorial_step) = &self.board.tutorial_step {
+            if dirty && self.winner().is_some() {
+                if let Some(next_step) = tutorial_step.next() {
+                    next_step.apply(&mut self.board);
+                }
             }
         }
 
-        if let Some(Button::Mouse(button)) = e.press_args() {
-            // if clicked inside the loose tile and should be inserting...
-            if view.in_loose_tile(&self.cursor_pos, self) && should_insert {
-                // if the tile isn't aligned with a guide, or the button wasn't left...
-                if button != MouseButton::Left {
-                    // rotate the loose tile
-                    self.rotate_loose_tile(RotateDir::CW);
-                } else {
-                    // otherwise, insert the tile
-                    self.insert_loose_tile();
-                }
-                dirty = true;
-            } else if let Some(pos) = view.in_tile(&self.cursor_pos, self) {
-                // if clicked inside a tile, if we should be moving...
-                if should_move {
-                    dirty = dirty || self.attempt_move(pos);
+        dirty
+    }
+
+    /// Handles mousemove event, returns whether or not the state may have changed
+    pub fn on_mousemove(&mut self, event: &web_sys::MouseEvent, local_id: PlayerID, view: &BoardView, ctx: &Context) -> bool {
+        // never do anything if this player is not the active player
+        if !self.local_turn(local_id) {
+            return false;
+        }
+
+        let (should_insert, should_move) = match self.turn_state {
+            TurnState::InsertTile => (true, false),
+            TurnState::MoveToken => (false, true),
+        };
+
+        let mut dirty = false;
+
+        let pos = [event.offset_x() as f64, event.offset_y() as f64];
+        if should_insert {
+            if let Some(new_loose_tile_position) = view.in_insert_guide(&pos, self, ctx) {
+                dirty = dirty || self.move_loose_tile(new_loose_tile_position);
+            }
+        }
+        if should_move {
+            let old_highlighted_tile = self.highlighted_tile;
+            self.highlighted_tile = view.in_tile(&pos, self, ctx).unwrap_or(self.highlighted_tile);
+            dirty = dirty || old_highlighted_tile != self.highlighted_tile;
+        }
+
+        if let Some(tutorial_step) = &self.board.tutorial_step {
+            if dirty && self.winner().is_some() {
+                if let Some(next_step) = tutorial_step.next() {
+                    next_step.apply(&mut self.board);
                 }
             }
+        }
+
+        dirty
+    }
+
+    /// Handles keydown event, returns whether or not the state may have changed
+    pub fn on_keydown(&mut self, event: &web_sys::KeyboardEvent, local_id: PlayerID) -> bool {
+        // never do anything if this player is not the active player
+        if !self.local_turn(local_id) {
+            return false;
+        }
+
+        let (should_insert, should_move) = match self.turn_state {
+            TurnState::InsertTile => (true, false),
+            TurnState::MoveToken => (false, true),
+        };
+
+        let mut dirty = false;
+        let key = event.code();
+
+        // handle insert
+        if should_insert {
+            let newly_dirty = match key.as_str() {
+                "ArrowLeft" | "KeyA" => self.handle_insert_key_direction(Direction::West),
+                "ArrowRight" | "KeyD" => self.handle_insert_key_direction(Direction::East),
+                "ArrowUp" | "KeyW" => self.handle_insert_key_direction(Direction::North),
+                "ArrowDown" | "KeyS" => self.handle_insert_key_direction(Direction::South),
+                "ShiftLeft" => self.rotate_loose_tile(RotateDir::CCW),
+                "ShiftRight" => self.rotate_loose_tile(RotateDir::CW),
+                "Space" => self.insert_loose_tile(),
+                _ => false
+            };
+            dirty = dirty || newly_dirty;
+        }
+        // handle move
+        if should_move {
+            let newly_dirty = match key.as_str() {
+                "ArrowLeft" | "KeyA" => self.handle_move_key_direction(Direction::West),
+                "ArrowRight" | "KeyD" => self.handle_move_key_direction(Direction::East),
+                "ArrowUp" | "KeyW" => self.handle_move_key_direction(Direction::North),
+                "ArrowDown" | "KeyS" => self.handle_move_key_direction(Direction::South),
+                "Space" => self.attempt_move(self.highlighted_tile),
+                _ => false
+            };
+            dirty = dirty || newly_dirty;
         }
 
         if let Some(tutorial_step) = &self.board.tutorial_step {

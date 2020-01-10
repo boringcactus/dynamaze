@@ -1,7 +1,6 @@
 //! Menu / Game view
 
-use graphics::{Context, Graphics};
-use graphics::character::CharacterCache;
+use web_sys::CanvasRenderingContext2d as Context;
 
 use crate::{BoardView, BoardViewSettings, colors, GameController};
 use crate::menu::{GameState, NetGameState};
@@ -14,18 +13,21 @@ pub struct GameView {
 
 impl GameView {
     /// Create a new GameView for a screen with the given \[width, height\]
-    pub fn new(size: [f64; 2]) -> GameView {
+    pub fn new() -> GameView {
         GameView {
-            board_view: BoardView::new(BoardViewSettings::new(size)),
+            board_view: BoardView::new(BoardViewSettings::new()),
         }
     }
 
     /// Draw game
-    pub fn draw<G: Graphics, C>(
+    pub fn draw(
         &self, controller: &GameController,
-        glyphs: &mut C, c: &Context, g: &mut G,
-    ) where C: CharacterCache<Texture=G::Texture> {
-        use graphics::Transformed;
+        ctx: &Context,
+    ) {
+        ctx.save();
+        ctx.set_fill_style(&colors::LIGHT.into());
+        ctx.fill_rect(0.0, 0.0, 10000.0, 10000.0); // TODO don't do this
+        ctx.restore();
         match controller.state {
             GameState::MainMenu => {}
             GameState::ConnectMenu(_) => {}
@@ -34,18 +36,25 @@ impl GameView {
                 let state = state.read().expect("Failed to acquire state mutex");
                 match *state {
                     NetGameState::Lobby(ref info) => {
-                        let mut transform = c.transform.trans(0.0, 150.0);
+                        ctx.save();
+                        let mut y = 150.0;
                         for player in info.players_ref() {
-                            // TODO don't do this
+                            // TODO make this more robust
                             let is_me = player.id == controller.player_id;
                             let x_offset = if is_me { 20.0 } else { 0.0 };
-                            graphics::ellipse(player.color.into(), [0.0, -15.0, 15.0, 15.0], transform.trans(x_offset, 0.0), g);
-                            graphics::text(colors::DARK.into(), 15, &player.name, glyphs, transform.trans(x_offset + 20.0, 0.0), g).ok().expect("Failed to draw text");
-                            transform = transform.trans(0.0, 30.0);
+                            ctx.begin_path();
+                            ctx.set_fill_style(&player.color.into());
+                            ctx.ellipse(x_offset, y - 15.0, 15.0, 15.0, 0.0, 0.0, ::std::f64::consts::PI * 2.0);
+                            ctx.fill();
+                            ctx.set_fill_style(&colors::DARK.into());
+                            ctx.set_font("15pt sans-serif");
+                            ctx.fill_text(&player.name, x_offset + 20.0, y);
+                            y += 30.0;
                         }
+                        ctx.restore();
                     }
                     NetGameState::Active(ref board_controller) => {
-                        self.board_view.draw(board_controller, controller.player_id, glyphs, c, g);
+                        self.board_view.draw(board_controller, controller.player_id, ctx);
                     }
                     NetGameState::GameOver(_) => {}
                     NetGameState::Error(_) => {}
@@ -53,30 +62,6 @@ impl GameView {
             }
             GameState::HardError(_) => {}
             GameState::Options(_) => {}
-        }
-    }
-
-    /// Grabs a Conrod theme
-    pub fn theme(&self) -> conrod_core::Theme {
-        use conrod_core::position::{Align, Padding, Position, Relative};
-        let light = colors::LIGHT.into();
-        conrod_core::Theme {
-            name: "DynaMaze Theme".to_string(),
-            padding: Padding::none(),
-            x_position: Position::Relative(Relative::Align(Align::Start), None),
-            y_position: Position::Relative(Relative::Align(Align::Start), None),
-            background_color: light,
-            shape_color: light.highlighted(),
-            border_color: colors::BLUE.into(),
-            border_width: 0.0,
-            label_color: colors::DARK.into(),
-            font_id: None,
-            font_size_large: 26,
-            font_size_medium: 18,
-            font_size_small: 12,
-            widget_styling: conrod_core::theme::StyleMap::default(),
-            mouse_drag_threshold: 0.0,
-            double_click_threshold: std::time::Duration::from_millis(500),
         }
     }
 }

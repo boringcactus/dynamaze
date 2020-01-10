@@ -1,11 +1,11 @@
 extern crate toml;
 
 use std::env;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard};
 
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::prelude::*;
 
 #[derive(Deserialize, Clone, Serialize)]
 #[serde(default)]
@@ -37,19 +37,22 @@ pub struct GameOptionsHandle {
     options: RwLock<GameOptions>,
 }
 
-lazy_static! {
-    static ref CONFIG_PATH: PathBuf = {
-        let mut config = env::current_exe().unwrap();
-        config.set_extension("toml");
-        config
-    };
+fn read() -> Option<String> {
+    let window = web_sys::window().unwrap_throw();
+    let local_storage = window.local_storage().unwrap_throw().unwrap_throw();
+    local_storage.get_item("settings").unwrap_throw()
+}
+
+fn write(settings: &str) {
+    let window = web_sys::window().unwrap_throw();
+    let local_storage = window.local_storage().unwrap_throw().unwrap_throw();
+    local_storage.set_item("settings", settings);
 }
 
 impl GameOptionsHandle {
     fn new() -> Self {
-        let options = fs::read(&*CONFIG_PATH)
-            .suppress_error()
-            .and_then(|x| toml::from_slice(&x).suppress_error())
+        let options = read()
+            .and_then(|x| toml::from_str(&x).ok())
             .unwrap_or_default();
         GameOptionsHandle {
             options: RwLock::new(options),
@@ -63,7 +66,7 @@ impl GameOptionsHandle {
     pub fn save(&self, options: &GameOptions) {
         *(self.options.write().unwrap()) = options.clone();
         let _ = toml::to_string_pretty(options).suppress_error()
-            .and_then(|data| fs::write(&*CONFIG_PATH, data).suppress_error());
+            .map(|data| write(&data));
     }
 }
 

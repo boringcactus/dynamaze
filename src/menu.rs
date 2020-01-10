@@ -3,8 +3,8 @@
 use std::net::SocketAddrV4;
 use std::sync::{Arc, RwLock};
 
+use futures::channel::mpsc;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 
 use crate::{BoardController, Player, PlayerID};
 use crate::colors::Color;

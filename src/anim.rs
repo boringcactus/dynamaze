@@ -1,8 +1,8 @@
 use std::f64::consts::FRAC_PI_2;
 use std::sync::RwLock;
 
+use futures::channel::mpsc;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 
 use crate::Direction;
 use crate::net::{Message, MessageCtrl};

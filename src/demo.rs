@@ -2,17 +2,18 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::sync::{Arc, RwLock};
 
-use crate::{Board, Direction, Player, PlayerID};
+use crate::{Board, Direction, GameView, Player, PlayerID};
 use crate::board::PlayerToken;
 use crate::board_controller::{BoardController, BoardSettings};
 use crate::colors;
 use crate::menu::{ConnectedState, GameState, NetGameState};
 use crate::menu_controller::GameController;
 use crate::net;
+use crate::sound::SoundEngine;
 
 /// Checks to see if the game was launched with the `--demo` argument.
 pub fn is_demo() -> bool {
-    crate::has_arg("--demo")
+    true
 }
 
 /// Creates a demo-friendly GameController
@@ -41,9 +42,9 @@ pub fn new_controller() -> GameController {
     GameController {
         state,
         player_id,
-        shift: false,
-        ctrl: false,
         last_player: None,
+        view: GameView::new(),
+        sound_engine: SoundEngine::new(),
     }
 }
 

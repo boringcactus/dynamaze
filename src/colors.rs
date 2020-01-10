@@ -1,23 +1,16 @@
 #![allow(clippy::unnecessary_cast)]
 
-use conrod_core::Color as Ccolor;
-use graphics::types::Color as Gcolor;
 use rand::distributions::{Distribution, Standard};
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsValue;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Color(pub f32, pub f32, pub f32);
 
-impl Into<Gcolor> for Color {
-    fn into(self) -> Gcolor {
-        [self.0, self.1, self.2, 1.0]
-    }
-}
-
-impl Into<Ccolor> for Color {
-    fn into(self) -> Ccolor {
-        Ccolor::Rgba(self.0, self.1, self.2, 1.0)
+impl Into<JsValue> for Color {
+    fn into(self) -> JsValue {
+        JsValue::from_str(&format!("rgb({}%, {}%, {}%)", self.0 * 100.0, self.1 * 100.0, self.2 * 100.0))
     }
 }
 

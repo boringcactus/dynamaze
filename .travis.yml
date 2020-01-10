@@ -8,15 +8,12 @@ cache:
 filter_secrets: false
 os:
   - linux
-  - osx
-  - windows
 before_install:
-  - if [ $TRAVIS_OS_NAME = linux ]; then sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libxcb-shape0-dev libxcb-xfixes0-dev; fi
   - rustup component add clippy
 script:
   - cargo test
   - cargo clippy
-  - cargo build --release --features client
+  - wasm-pack build --target no-modules
 deploy:
   skip_cleanup: true
   provider: script

@@ -1,12 +1,8 @@
-extern crate rodio;
-
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::BufReader;
 use std::sync::Mutex;
-use std::time::Duration;
 
-use rodio::*;
+use wasm_bindgen::prelude::*;
+use web_sys::{AudioContext, GainNode, HtmlAudioElement};
 
 use crate::options;
 
@@ -19,12 +15,16 @@ pub enum Music {
     InGame,
 }
 
-impl Into<File> for Music {
-    fn into(self) -> File {
-        match self {
-            Music::Menu => File::open("assets/BlueEther.mp3").expect("Failed to open audio"),
-            Music::InGame => File::open("assets/ElectricSweater.mp3").expect("Failed to open audio"),
-        }
+impl Music {
+    fn load(self) -> HtmlAudioElement {
+        let path = match self {
+            Music::Menu => "assets/BlueEther.mp3",
+            Music::InGame => "assets/ElectricSweater.mp3",
+        };
+
+        let result = HtmlAudioElement::new_with_src(path).unwrap_throw();
+        result.set_loop(true);
+        result
     }
 }
 
@@ -34,34 +34,44 @@ pub enum Sound {
 }
 
 impl Sound {
-    fn play_on(self, sink: &Sink) {
-        match self {
-            Sound::YourTurn => {
-                let freqs = [349, 440, 523, 698];
-                for freq in &freqs {
-                    let source = rodio::source::SineWave::new(*freq);
-                    let source = source.fade_in(Duration::from_millis(10));
-                    sink.append(source.take_duration(Duration::from_millis(100)));
-                }
-            }
-        }
+    fn load(self) -> HtmlAudioElement {
+        let path = match self {
+            Sound::YourTurn => "assets/TurnPing.wav",
+        };
+
+        let result = HtmlAudioElement::new_with_src(path).unwrap_throw();
+        result
     }
 }
 
 pub struct SoundEngine {
-    device: Device,
-    music_sinks: Mutex<HashMap<Music, Sink>>,
-    sound_sinks: Mutex<HashMap<Sound, Sink>>,
+    context: AudioContext,
+    music_sources: Mutex<HashMap<Music, HtmlAudioElement>>,
+    sound_sources: Mutex<HashMap<Sound, HtmlAudioElement>>,
+    music_gain: GainNode,
+    sound_gain: GainNode,
     current_music: Mutex<Option<Music>>,
 }
 
 impl SoundEngine {
-    fn new() -> SoundEngine {
-        let device = rodio::default_output_device().unwrap();
+    pub fn new() -> SoundEngine {
+        let context = AudioContext::new().unwrap_throw();
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("started sound engine"));
+        let music_gain = context.create_gain().expect_throw("Failed to create music gain node");
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("yeet sound engine"));
+        music_gain.gain().set_value(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().music_level)) / 100.0);
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("swag sound engine"));
+        music_gain.connect_with_audio_node(&context.destination());
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("made sound engine"));
+        let sound_gain = context.create_gain().expect_throw("Failed to create sound  gain node");
+        sound_gain.gain().set_value(SOUND_VOLUME * (f32::from(options::HANDLE.fetch().sound_level)) / 100.0);
+        sound_gain.connect_with_audio_node(&context.destination());
         SoundEngine {
-            device,
-            music_sinks: Mutex::new(HashMap::new()),
-            sound_sinks: Mutex::new(HashMap::new()),
+            context,
+            music_sources: Mutex::new(HashMap::new()),
+            sound_sources: Mutex::new(HashMap::new()),
+            music_gain,
+            sound_gain,
             current_music: Mutex::new(None),
         }
     }
@@ -73,61 +83,41 @@ impl SoundEngine {
                 return;
             }
         }
-        let mut music_sinks = self.music_sinks.lock().unwrap();
+        let mut music_sources = self.music_sources.lock().unwrap();
         let mut current_music = self.current_music.lock().unwrap();
         if let Some(ref old_music) = *current_music {
-            if let Some(old_sink) = music_sinks.get(old_music) {
-                old_sink.pause();
+            if let Some(old_source) = music_sources.get(old_music) {
+                old_source.pause();
             }
         }
-        let sink = music_sinks.entry(music).or_insert_with(|| {
-            let sink = Sink::new(&self.device);
-            sink.set_volume(MUSIC_VOLUME);
-            let file: File = music.into();
-            let source = Decoder::new(BufReader::new(file)).expect("Failed to decode");
-            sink.pause();
-            sink.append(source.repeat_infinite());
-            sink
+        let source = music_sources.entry(music).or_insert_with(|| {
+            let source = music.load();
+            let source_node = self.context.create_media_element_source(&source).unwrap_throw();
+            source_node.connect_with_audio_node(&self.music_gain);
+            source
         });
-        sink.set_volume(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().music_level)) / 100.0);
-        sink.play();
+        source.play();
         *current_music = Some(music);
     }
 
+    pub fn play_sound(&self, snd: Sound) {
+        let mut sound_sources = self.sound_sources.lock().unwrap();
+        let source = sound_sources.entry(snd).or_insert_with(|| {
+            let source = snd.load();
+            let source_node = self.context.create_media_element_source(&source).unwrap_throw();
+            source_node.connect_with_audio_node(&self.sound_gain);
+            source
+        });
+        source.play();
+    }
+
     pub fn fetch_volume(&self) {
-        let current_music = self.current_music.lock().unwrap();
-        if let Some(music) = *current_music {
-            let mut music_sinks = self.music_sinks.lock().unwrap();
-            if let Some(sink) = music_sinks.get_mut(&music) {
-                sink.set_volume(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().music_level)) / 100.0);
-            }
-        }
+        self.music_gain.gain().set_value(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().music_level)) / 100.0);
+        self.sound_gain.gain().set_value(SOUND_VOLUME * (f32::from(options::HANDLE.fetch().sound_level)) / 100.0);
     }
 
     pub fn poke_options(&self, new_options: &options::GameOptions) {
-        let current_music = self.current_music.lock().unwrap();
-        if let Some(music) = *current_music {
-            let mut music_sinks = self.music_sinks.lock().unwrap();
-            if let Some(sink) = music_sinks.get_mut(&music) {
-                sink.set_volume(MUSIC_VOLUME * (f32::from(new_options.music_level)) / 100.0);
-            }
-        }
+        self.music_gain.gain().set_value(MUSIC_VOLUME * (f32::from(new_options.music_level)) / 100.0);
+        self.sound_gain.gain().set_value(SOUND_VOLUME * (f32::from(new_options.sound_level)) / 100.0);
     }
-
-    pub fn play_sound(&self, snd: Sound) {
-        let mut sound_sinks = self.sound_sinks.lock().unwrap();
-        let sink = sound_sinks.entry(snd).or_insert_with(|| {
-            let sink = Sink::new(&self.device);
-            sink.set_volume(SOUND_VOLUME);
-            sink
-        });
-        sink.set_volume(SOUND_VOLUME * (f32::from(options::HANDLE.fetch().sound_level)) / 100.0);
-        snd.play_on(sink);
-    }
-}
-
-lazy_static! {
-    pub static ref SOUND: SoundEngine = {
-        SoundEngine::new()
-    };
 }
