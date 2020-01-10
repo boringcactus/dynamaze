@@ -10,7 +10,7 @@ os:
   - linux
 before_install:
   - rustup component add clippy
-  - cargo install wasm-pack
+  - cargo install --git https://github.com/boringcactus/wasm-pack.git
 script:
   - cargo test
   - cargo clippy
