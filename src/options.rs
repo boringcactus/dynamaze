@@ -44,7 +44,7 @@ fn read() -> Option<String> {
 fn write(settings: &str) {
     let window = web_sys::window().unwrap_throw();
     let local_storage = window.local_storage().unwrap_throw().unwrap_throw();
-    local_storage.set_item("settings", settings);
+    local_storage.set_item("settings", settings).unwrap_throw();
 }
 
 impl GameOptionsHandle {
@@ -63,13 +63,12 @@ impl GameOptionsHandle {
 
     pub fn save(&self, options: &GameOptions) {
         *(self.options.write().unwrap()) = options.clone();
-        let _ = toml::to_string_pretty(options).suppress_error()
+        let _ = toml::to_string_pretty(options)
+            .suppress_error()
             .map(|data| write(&data));
     }
 }
 
 lazy_static! {
-    pub static ref HANDLE: GameOptionsHandle = {
-        GameOptionsHandle::new()
-    };
+    pub static ref HANDLE: GameOptionsHandle = { GameOptionsHandle::new() };
 }

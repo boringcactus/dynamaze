@@ -50,7 +50,11 @@ pub struct BoardController {
 
 impl BoardController {
     /// Creates a new board controller with a new board
-    pub fn new(settings: BoardSettings, player_list: Vec<Player>, host_id: PlayerID) -> BoardController {
+    pub fn new(
+        settings: BoardSettings,
+        player_list: Vec<Player>,
+        host_id: PlayerID,
+    ) -> BoardController {
         let width = settings.width;
         let height = settings.height;
         let mut player_ids: Vec<PlayerID> = player_list.iter().map(|p| p.id).collect();
@@ -117,7 +121,13 @@ impl BoardController {
     }
 
     /// Handles click event, returns whether or not the state may have changed
-    pub fn on_click(&mut self, event: &web_sys::MouseEvent, local_id: PlayerID, view: &BoardView, ctx: &Context) -> bool {
+    pub fn on_click(
+        &mut self,
+        event: &web_sys::MouseEvent,
+        local_id: PlayerID,
+        view: &BoardView,
+        ctx: &Context,
+    ) -> bool {
         web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("clicking in board"));
         // never do anything if this player is not the active player
         if !self.local_turn(local_id) {
@@ -164,7 +174,13 @@ impl BoardController {
     }
 
     /// Handles mousemove event, returns whether or not the state may have changed
-    pub fn on_mousemove(&mut self, event: &web_sys::MouseEvent, local_id: PlayerID, view: &BoardView, ctx: &Context) -> bool {
+    pub fn on_mousemove(
+        &mut self,
+        event: &web_sys::MouseEvent,
+        local_id: PlayerID,
+        view: &BoardView,
+        ctx: &Context,
+    ) -> bool {
         // never do anything if this player is not the active player
         if !self.local_turn(local_id) {
             return false;
@@ -185,7 +201,9 @@ impl BoardController {
         }
         if should_move {
             let old_highlighted_tile = self.highlighted_tile;
-            self.highlighted_tile = view.in_tile(&pos, self, ctx).unwrap_or(self.highlighted_tile);
+            self.highlighted_tile = view
+                .in_tile(&pos, self, ctx)
+                .unwrap_or(self.highlighted_tile);
             dirty = dirty || old_highlighted_tile != self.highlighted_tile;
         }
 
@@ -225,7 +243,7 @@ impl BoardController {
                 "ShiftLeft" => self.rotate_loose_tile(RotateDir::CCW),
                 "ShiftRight" => self.rotate_loose_tile(RotateDir::CW),
                 "Space" => self.insert_loose_tile(),
-                _ => false
+                _ => false,
             };
             dirty = dirty || newly_dirty;
         }
@@ -237,7 +255,7 @@ impl BoardController {
                 "ArrowUp" | "KeyW" => self.handle_move_key_direction(Direction::North),
                 "ArrowDown" | "KeyS" => self.handle_move_key_direction(Direction::South),
                 "Space" => self.attempt_move(self.highlighted_tile),
-                _ => false
+                _ => false,
             };
             dirty = dirty || newly_dirty;
         }
@@ -257,7 +275,11 @@ impl BoardController {
         let (row, col) = pos;
         // if that tile is reachable from the active player's position...
         let id = self.active_player_id();
-        if self.board.reachable_coords(self.board.player_pos(id)).contains(&pos) {
+        if self
+            .board
+            .reachable_coords(self.board.player_pos(id))
+            .contains(&pos)
+        {
             // move the active player to the given position
             self.board.move_player(id, pos);
             // if the player has reached their target...
@@ -308,7 +330,9 @@ impl BoardController {
             }
             (Direction::East, (Direction::East, n)) => (Direction::East, n),
             (Direction::East, (Direction::North, n)) if n == guides_x - 1 => (Direction::East, 0),
-            (Direction::East, (Direction::South, n)) if n == guides_x - 1 => (Direction::East, guides_y - 1),
+            (Direction::East, (Direction::South, n)) if n == guides_x - 1 => {
+                (Direction::East, guides_y - 1)
+            }
             (Direction::East, (d, n)) => (d, (n + 1).min(guides_x - 1)),
             (Direction::South, (Direction::North, n)) => {
                 let dir = if n < guides_x / 2 {
@@ -320,7 +344,9 @@ impl BoardController {
             }
             (Direction::South, (Direction::South, n)) => (Direction::South, n),
             (Direction::South, (Direction::West, n)) if n == guides_y - 1 => (Direction::South, 0),
-            (Direction::South, (Direction::East, n)) if n == guides_y - 1 => (Direction::South, guides_x - 1),
+            (Direction::South, (Direction::East, n)) if n == guides_y - 1 => {
+                (Direction::South, guides_x - 1)
+            }
             (Direction::South, (d, n)) => (d, (n + 1).min(guides_y - 1)),
             (Direction::North, (Direction::South, n)) => {
                 let count = guides_y - 1;
@@ -335,9 +361,7 @@ impl BoardController {
             (Direction::North, (Direction::West, 0)) => (Direction::North, 0),
             (Direction::North, (Direction::East, 0)) => (Direction::North, guides_x - 1),
             (Direction::North, (d, n)) => (d, n.saturating_sub(1)),
-            _ => {
-                unreachable!("bad key")
-            }
+            _ => unreachable!("bad key"),
         };
         self.move_loose_tile(new_loose_tile_position)
     }

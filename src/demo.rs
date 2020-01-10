@@ -25,19 +25,35 @@ pub fn new_controller() -> GameController {
         height: 0,
     };
     let players = vec![
-        Player::new("Player 1".to_string(), colors::Color(0.2, 0.4, 0.6), player_id),
-        Player::new_child("Player 2".to_string(), colors::Color(0.4, 0.2, 0.6), 2, player_id),
-        Player::new_child("Player 3".to_string(), colors::Color(0.6, 0.2, 0.4), 3, player_id),
-        Player::new_child("Player 4".to_string(), colors::Color(0.4, 0.6, 0.2), 4, player_id),
+        Player::new(
+            "Player 1".to_string(),
+            colors::Color(0.2, 0.4, 0.6),
+            player_id,
+        ),
+        Player::new_child(
+            "Player 2".to_string(),
+            colors::Color(0.4, 0.2, 0.6),
+            2,
+            player_id,
+        ),
+        Player::new_child(
+            "Player 3".to_string(),
+            colors::Color(0.6, 0.2, 0.4),
+            3,
+            player_id,
+        ),
+        Player::new_child(
+            "Player 4".to_string(),
+            colors::Color(0.4, 0.6, 0.2),
+            4,
+            player_id,
+        ),
     ];
     let board = BoardController::new(settings, players, player_id);
     let state = NetGameState::Active(board);
     let state = Arc::new(RwLock::new(state));
     let sender = net::run_dummy(state.clone());
-    let state = ConnectedState {
-        sender,
-        state,
-    };
+    let state = ConnectedState { sender, state };
     let state = GameState::InGame(state);
     GameController {
         state,
@@ -51,7 +67,8 @@ pub fn new_controller() -> GameController {
 
 /// Creates a demo-friendly board
 pub fn new_board(players: &BTreeMap<PlayerID, Player>) -> Board {
-    let mut cells = Board::parse_board(r"
+    let mut cells = Board::parse_board(
+        r"
             ┌┬─┘┐─┐
             ┐│┬┴┌├┘
             │└┘└┤┌┤
@@ -59,7 +76,8 @@ pub fn new_board(players: &BTreeMap<PlayerID, Player>) -> Board {
             └││─┘─┐
             ┌┌└─┤┘┤
             └─┘┬└┬┘
-        ");
+        ",
+    );
     let loose_tile = '┤'.try_into().unwrap();
     let loose_tile_position = (Direction::North, 1);
     let height = cells.len();
@@ -75,16 +93,20 @@ pub fn new_board(players: &BTreeMap<PlayerID, Player>) -> Board {
     if players.len() > 3 {
         cells[0][2].whose_target = Some(players[3].id);
     }
-    let player_tokens = players.iter().enumerate().map(move |(i, player)| {
-        let position = match i {
-            0 => (0, 0),
-            1 => (height - 1, width - 1),
-            2 => (0, width - 1),
-            3 => (height - 1, 0),
-            _ => panic!("Too many players"),
-        };
-        (player.id, PlayerToken::new(player, position))
-    }).collect();
+    let player_tokens = players
+        .iter()
+        .enumerate()
+        .map(move |(i, player)| {
+            let position = match i {
+                0 => (0, 0),
+                1 => (height - 1, width - 1),
+                2 => (0, width - 1),
+                3 => (height - 1, 0),
+                _ => panic!("Too many players"),
+            };
+            (player.id, PlayerToken::new(player, position))
+        })
+        .collect();
     Board {
         cells,
         loose_tile,

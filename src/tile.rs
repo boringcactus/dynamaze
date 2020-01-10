@@ -36,7 +36,12 @@ impl Direction {
 
     /// Gets a list of all Directions
     pub fn all() -> &'static [Direction] {
-        &[Direction::North, Direction::East, Direction::South, Direction::West]
+        &[
+            Direction::North,
+            Direction::East,
+            Direction::South,
+            Direction::West,
+        ]
     }
 }
 
@@ -105,7 +110,7 @@ impl Distribution<Direction> for Standard {
             1 => Direction::South,
             2 => Direction::East,
             3 => Direction::West,
-            _ => panic!("Invalid direction generated")
+            _ => panic!("Invalid direction generated"),
         }
     }
 }
@@ -144,7 +149,7 @@ impl Distribution<Shape> for Standard {
             0 => Shape::L,
             1 => Shape::I,
             2 => Shape::T,
-            _ => panic!("Invalid shape generated")
+            _ => panic!("Invalid shape generated"),
         }
     }
 }
@@ -163,11 +168,19 @@ pub struct Tile {
 impl Tile {
     /// Get the directions which are valid connections on this tile
     pub fn paths(&self) -> Vec<Direction> {
-        self.shape.paths().iter().map(|d| *d * self.orientation).collect()
+        self.shape
+            .paths()
+            .iter()
+            .map(|d| *d * self.orientation)
+            .collect()
     }
     /// Get the directions which are blocked on this tile
     pub fn walls(&self) -> Vec<Direction> {
-        self.shape.walls().iter().map(|d| *d * self.orientation).collect()
+        self.shape
+            .walls()
+            .iter()
+            .map(|d| *d * self.orientation)
+            .collect()
     }
 
     /// Rotate this tile clockwise
@@ -205,7 +218,7 @@ impl TryFrom<char> for Tile {
             '┬' => (T, East),
             '┤' => (T, South),
             '┴' => (T, West),
-            _ => return Err(())
+            _ => return Err(()),
         };
         Ok(Tile {
             shape,

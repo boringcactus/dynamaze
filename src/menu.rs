@@ -54,7 +54,11 @@ impl LobbyInfo {
         if self.host.id == *id {
             &self.host
         } else {
-            self.guests.iter().filter(|p| p.id == *id).nth(0).expect("Not in lobby!")
+            self.guests
+                .iter()
+                .filter(|p| p.id == *id)
+                .nth(0)
+                .expect("Not in lobby!")
         }
     }
 
@@ -63,7 +67,11 @@ impl LobbyInfo {
         if self.host.id == *id {
             &mut self.host
         } else {
-            self.guests.iter_mut().filter(|p| p.id == *id).nth(0).expect("Not in lobby!")
+            self.guests
+                .iter_mut()
+                .filter(|p| p.id == *id)
+                .nth(0)
+                .expect("Not in lobby!")
         }
     }
 }
@@ -106,7 +114,10 @@ impl NetGameState {
 impl NetGameState {
     /// Connects to a lobby running on the given address as the given player
     pub fn join_lobby(socket: &mut mpsc::Sender<MessageCtrl>, player: Player) {
-        socket.try_send(Message::JoinLobby(player).into()).map_err(|_| ()).expect("Failed to pass message")
+        socket
+            .try_send(Message::JoinLobby(player).into())
+            .map_err(|_| ())
+            .expect("Failed to pass message")
     }
 }
 

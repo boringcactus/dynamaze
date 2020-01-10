@@ -12,8 +12,6 @@ use crate::{Player, PlayerID};
 use crate::anim;
 use crate::menu::NetGameState;
 
-const USIZE_NET_LEN: usize = 8;
-
 /// A message that can be sent over the network
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Message {
@@ -64,8 +62,6 @@ impl From<mpsc::SendError> for MessageCodecError {
     }
 }
 
-struct MessageCodec;
-
 #[derive(Clone, Debug)]
 pub enum MessageCtrl {
     SendGlobal(Box<Message>),
@@ -103,7 +99,12 @@ impl Into<MessageCtrl> for Message {
     }
 }
 
-fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGameState>>, player_id: PlayerID) -> Option<MessageCtrl> {
+fn handle_incoming(
+    message: Message,
+    source: SocketAddr,
+    state: Arc<RwLock<NetGameState>>,
+    player_id: PlayerID,
+) -> Option<MessageCtrl> {
     let mut state = state.write().expect("Failed to acquire state");
     let is_host = state.is_host(player_id);
     match message {
@@ -116,7 +117,11 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
         Message::EditPlayer(id, player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
                 if is_host {
-                    lobby_info.guests.iter_mut().filter(|p| p.id == id).for_each(|p| *p = player.clone());
+                    lobby_info
+                        .guests
+                        .iter_mut()
+                        .filter(|p| p.id == id)
+                        .for_each(|p| *p = player.clone());
                     return Some(MessageCtrl::send(Message::State(state.clone())));
                 }
             }
@@ -125,7 +130,10 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
             // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
             *state = new_state;
             if is_host {
-                return Some(MessageCtrl::send_without(Message::State(state.clone()), source));
+                return Some(MessageCtrl::send_without(
+                    Message::State(state.clone()),
+                    source,
+                ));
             }
         }
         Message::Anim(sync) => {
@@ -137,12 +145,7 @@ fn handle_incoming(message: Message, source: SocketAddr, state: Arc<RwLock<NetGa
 
 pub const LOCAL_PORT: u16 = 12543;
 
-fn handle_error<T: Error>(err: T, state: Arc<RwLock<NetGameState>>) {
-    let mut state = state.write().expect("Failed to touch state");
-    *state = NetGameState::Error(format!("{}", err));
-}
-
-pub fn run_dummy(state: Arc<RwLock<NetGameState>>) -> mpsc::Sender<MessageCtrl> {
+pub fn run_dummy(_state: Arc<RwLock<NetGameState>>) -> mpsc::Sender<MessageCtrl> {
     let (send, recv) = mpsc::channel(20);
     recv.map(Ok).forward(futures::sink::drain());
     send

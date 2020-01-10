@@ -6,7 +6,10 @@ use std::ops;
 use wasm_bindgen::prelude::*;
 use web_sys::CanvasRenderingContext2d as Context;
 
-use crate::{BoardController, colors::{self, Color}, Direction, PlayerID, Tile};
+use crate::{
+    BoardController,
+    colors::{self, Color}, Direction, PlayerID, Tile,
+};
 use crate::anim;
 use crate::board_controller::TurnState;
 
@@ -46,7 +49,10 @@ struct Extents {
 impl Extents {
     #[allow(dead_code)]
     fn center(&self) -> [f64; 2] {
-        [(self.west + self.east) / 2.0, (self.north + self.south) / 2.0]
+        [
+            (self.west + self.east) / 2.0,
+            (self.north + self.south) / 2.0,
+        ]
     }
 
     fn diagonal(&self) -> Diagonal {
@@ -121,8 +127,12 @@ impl PartialOrd<Extents> for [f64; 2] {
     fn partial_cmp(&self, other: &Extents) -> Option<cmp::Ordering> {
         use std::cmp::Ordering::*;
         let [x, y] = self;
-        let result = match (x.partial_cmp(&other.west), x.partial_cmp(&other.east),
-                            y.partial_cmp(&other.north), y.partial_cmp(&other.south)) {
+        let result = match (
+            x.partial_cmp(&other.west),
+            x.partial_cmp(&other.east),
+            y.partial_cmp(&other.north),
+            y.partial_cmp(&other.south),
+        ) {
             // too far west
             (Some(Less), _, _, _) => Greater,
             // too far east
@@ -145,7 +155,7 @@ impl PartialOrd<Extents> for [f64; 2] {
             // thanks, rust!
             // (Some(_), Some(_), Some(_), Some(_)) => panic!("Implausible bounds check for point in extents"),
             // something is NaN or otherwise fucky
-            _ => return None
+            _ => return None,
         };
         Some(result)
     }
@@ -187,21 +197,27 @@ impl BoardViewSettings {
     /// Creates new board view settings
     pub fn new() -> BoardViewSettings {
         BoardViewSettings {
-            background_color: colors::TEAL.into(),
-            reachable_background_color: colors::LIGHT.into(),
-            border_color: colors::DARK.into(),
-            board_edge_color: colors::DARK.into(),
-            cell_edge_color: colors::DARK.into(),
+            background_color: colors::TEAL,
+            reachable_background_color: colors::LIGHT,
+            border_color: colors::DARK,
+            board_edge_color: colors::DARK,
+            cell_edge_color: colors::DARK,
             board_edge_radius: 3.0,
             cell_edge_radius: 1.0,
-            text_color: colors::DARK.into(),
-            wall_color: colors::BLUE.into(),
+            text_color: colors::DARK,
+            wall_color: colors::BLUE,
             wall_width: 0.3,
-            insert_guide_color: colors::PURPLE.into(),
+            insert_guide_color: colors::PURPLE,
             ui_margin_south: 100.0,
             ui_margin_east: 300.0,
             font_size: 25,
         }
+    }
+}
+
+impl Default for BoardViewSettings {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -220,23 +236,33 @@ pub struct BoardView {
 impl BoardView {
     /// Creates a new board view
     pub fn new(settings: BoardViewSettings) -> BoardView {
-        BoardView {
-            settings,
-        }
+        BoardView { settings }
     }
 
     /// Gets the size of an individual tile and the x and y padding values
     fn tile_padding(&self, controller: &BoardController, ctx: &Context) -> (f64, f64, f64) {
         let settings = &self.settings;
         let canvas = ctx.canvas().unwrap_throw();
-        let cell_max_height = (canvas.height() as f64 - settings.ui_margin_south) / (controller.board.height() as f64 + 2.0);
-        let cell_max_width = (canvas.width() as f64 - settings.ui_margin_east) / (controller.board.width() as f64 + 2.0);
+        let cell_max_height = (canvas.height() as f64 - settings.ui_margin_south)
+            / (controller.board.height() as f64 + 2.0);
+        let cell_max_width = (canvas.width() as f64 - settings.ui_margin_east)
+            / (controller.board.width() as f64 + 2.0);
         if cell_max_height < cell_max_width {
-            let space_used_x = cell_max_height * (controller.board.width() as f64 + 2.0) + settings.ui_margin_east;
-            (cell_max_height, (canvas.width() as f64 - space_used_x) / 2.0, 0.0)
+            let space_used_x =
+                cell_max_height * (controller.board.width() as f64 + 2.0) + settings.ui_margin_east;
+            (
+                cell_max_height,
+                (canvas.width() as f64 - space_used_x) / 2.0,
+                0.0,
+            )
         } else {
-            let space_used_y = cell_max_width * (controller.board.height() as f64 + 2.0) + settings.ui_margin_south;
-            (cell_max_width, 0.0, (canvas.height() as f64 - space_used_y) / 2.0)
+            let space_used_y = cell_max_width * (controller.board.height() as f64 + 2.0)
+                + settings.ui_margin_south;
+            (
+                cell_max_width,
+                0.0,
+                (canvas.height() as f64 - space_used_y) / 2.0,
+            )
         }
     }
 
@@ -281,10 +307,7 @@ impl BoardView {
     }
 
     /// Draw board
-    pub fn draw(
-        &self, controller: &BoardController, local_id: PlayerID,
-        ctx: &Context,
-    ) {
+    pub fn draw(&self, controller: &BoardController, local_id: PlayerID, ctx: &Context) {
         // if a child is coming up soon, pretend we are them instead
         let local_id = controller.effective_local_id(local_id);
 
@@ -342,7 +365,13 @@ impl BoardView {
         ctx.restore();
     }
 
-    fn tile_extents(&self, controller: &BoardController, row: usize, col: usize, ctx: &Context) -> Extents {
+    fn tile_extents(
+        &self,
+        controller: &BoardController,
+        row: usize,
+        col: usize,
+        ctx: &Context,
+    ) -> Extents {
         let (cell_size, _, _) = self.tile_padding(controller, ctx);
         let (_, board) = self.game_extents(controller, ctx);
         let north = board.north + row as f64 * cell_size;
@@ -358,7 +387,12 @@ impl BoardView {
     }
 
     /// Checks if a given position is within a tile, and returns that tile's (row, col)
-    pub fn in_tile(&self, pos: &[f64; 2], controller: &BoardController, ctx: &Context) -> Option<(usize, usize)> {
+    pub fn in_tile(
+        &self,
+        pos: &[f64; 2],
+        controller: &BoardController,
+        ctx: &Context,
+    ) -> Option<(usize, usize)> {
         // TODO don't do this dumb thing
 
         let board_tile_width = controller.board.width();
@@ -375,10 +409,7 @@ impl BoardView {
         None
     }
 
-    fn draw_tiles(
-        &self, controller: &BoardController, local_id: PlayerID,
-        ctx: &Context,
-    ) {
+    fn draw_tiles(&self, controller: &BoardController, local_id: PlayerID, ctx: &Context) {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
 
@@ -387,7 +418,8 @@ impl BoardView {
         let reachable = controller.board.reachable_coords(current_player_pos);
         let loose_insert = &anim::STATE.read().unwrap().loose_insert;
 
-        let [offset_x, offset_y] = [0.0, loose_insert.distance_left * cell_size] * loose_insert.offset_dir;
+        let [offset_x, offset_y] =
+            [0.0, loose_insert.distance_left * cell_size] * loose_insert.offset_dir;
 
         for j in 0..board_tile_height {
             for i in 0..board_tile_width {
@@ -400,11 +432,16 @@ impl BoardView {
                 let is_highlighted = controller.highlighted_tile == (j, i);
                 ctx.save();
                 if loose_insert.applies_to_pos((j, i)) {
-                    ctx.translate(offset_x, offset_y);
+                    ctx.translate(offset_x, offset_y).unwrap_throw();
                 };
                 self.draw_tile(
-                    controller.board.get([i, j]), cell, color,
-                    is_highlighted, false, controller, local_id,
+                    controller.board.get([i, j]),
+                    cell,
+                    color,
+                    is_highlighted,
+                    false,
+                    controller,
+                    local_id,
                     ctx,
                 );
                 ctx.restore();
@@ -414,8 +451,14 @@ impl BoardView {
 
     #[allow(clippy::too_many_arguments)]
     fn draw_tile(
-        &self, tile: &Tile, outer: Extents, background_color: Color, draw_border: bool,
-        is_loose: bool, controller: &BoardController, local_id: PlayerID,
+        &self,
+        tile: &Tile,
+        outer: Extents,
+        background_color: Color,
+        draw_border: bool,
+        is_loose: bool,
+        controller: &BoardController,
+        local_id: PlayerID,
         ctx: &Context,
     ) {
         let settings = &self.settings;
@@ -427,8 +470,13 @@ impl BoardView {
         ctx.save();
 
         let [x, y] = outer.center();
-        ctx.translate(x, y);
-        ctx.rotate(if is_loose { anim_state.loose_rotate.angle } else { 0.0 });
+        ctx.translate(x, y).unwrap_throw();
+        ctx.rotate(if is_loose {
+            anim_state.loose_rotate.angle
+        } else {
+            0.0
+        })
+            .unwrap_throw();
 
         let outer = outer.clone() - outer.center();
         let inner = outer.clone() - wall_width;
@@ -452,7 +500,10 @@ impl BoardView {
                 .map(|x| cell_size * f64::from(x) / 6.0 + anim_offset)
                 .map(|x| diagonal.clone() + x)
                 .map(|x| outer.clamp_diagonal(x));
-            let polys = diagonals.clone().step_by(2).zip(diagonals.skip(1).step_by(2));
+            let polys = diagonals
+                .clone()
+                .step_by(2)
+                .zip(diagonals.skip(1).step_by(2));
 
             ctx.set_fill_style(&color.into());
             for stripe in polys {
@@ -498,7 +549,11 @@ impl BoardView {
         ctx.restore();
     }
 
-    fn insert_guides(&self, controller: &BoardController, ctx: &Context) -> Vec<(Direction, Vec<Extents>)> {
+    fn insert_guides(
+        &self,
+        controller: &BoardController,
+        ctx: &Context,
+    ) -> Vec<(Direction, Vec<Extents>)> {
         let board_tile_width = controller.board.width();
         let board_tile_height = controller.board.height();
         let (cell_size, _, _) = self.tile_padding(controller, ctx);
@@ -557,10 +612,7 @@ impl BoardView {
         result
     }
 
-    fn draw_insert_guides(
-        &self, controller: &BoardController, _local_id: PlayerID,
-        ctx: &Context,
-    ) {
+    fn draw_insert_guides(&self, controller: &BoardController, _local_id: PlayerID, ctx: &Context) {
         let settings = &self.settings;
 
         let (cell_size, _, _) = self.tile_padding(controller, ctx);
@@ -575,10 +627,26 @@ impl BoardView {
                 let mid_x = (guide.east + guide.west) / 2.0;
                 let mid_y = (guide.north + guide.south) / 2.0;
                 let ((x0, y0), (x1, y1), (x2, y2)) = match dir {
-                    Direction::North => ((guide.west, guide.north), (mid_x, guide.south), (guide.east, guide.north)),
-                    Direction::South => ((guide.west, guide.south), (mid_x, guide.north), (guide.east, guide.south)),
-                    Direction::West => ((guide.west, guide.north), (guide.east, mid_y), (guide.west, guide.south)),
-                    Direction::East => ((guide.east, guide.north), (guide.west, mid_y), (guide.east, guide.south)),
+                    Direction::North => (
+                        (guide.west, guide.north),
+                        (mid_x, guide.south),
+                        (guide.east, guide.north),
+                    ),
+                    Direction::South => (
+                        (guide.west, guide.south),
+                        (mid_x, guide.north),
+                        (guide.east, guide.south),
+                    ),
+                    Direction::West => (
+                        (guide.west, guide.north),
+                        (guide.east, mid_y),
+                        (guide.west, guide.south),
+                    ),
+                    Direction::East => (
+                        (guide.east, guide.north),
+                        (guide.west, mid_y),
+                        (guide.east, guide.south),
+                    ),
                 };
                 ctx.begin_path();
                 ctx.move_to(x0, y0);
@@ -593,7 +661,12 @@ impl BoardView {
     }
 
     /// Checks if the given position is in an insert guide or not
-    pub fn in_insert_guide(&self, pos: &[f64; 2], controller: &BoardController, ctx: &Context) -> Option<(Direction, usize)> {
+    pub fn in_insert_guide(
+        &self,
+        pos: &[f64; 2],
+        controller: &BoardController,
+        ctx: &Context,
+    ) -> Option<(Direction, usize)> {
         for (dir, guides) in self.insert_guides(controller, ctx) {
             for (i, guide) in guides.into_iter().enumerate() {
                 if pos < &guide {
@@ -615,14 +688,22 @@ impl BoardView {
     }
 
     /// Check if the given position is within the loose tile area
-    pub fn in_loose_tile(&self, pos: &[f64; 2], controller: &BoardController, ctx: &Context) -> bool {
+    pub fn in_loose_tile(
+        &self,
+        pos: &[f64; 2],
+        controller: &BoardController,
+        ctx: &Context,
+    ) -> bool {
         let cell = self.loose_tile_extents(controller, ctx);
         pos < &cell
     }
 
     #[allow(clippy::too_many_arguments)]
     fn draw_player_tokens(
-        &self, mode: DrawMode, controller: &BoardController, local_id: PlayerID,
+        &self,
+        mode: DrawMode,
+        controller: &BoardController,
+        local_id: PlayerID,
         ctx: &Context,
     ) {
         let settings = &self.settings;
@@ -643,8 +724,9 @@ impl BoardView {
             ctx.save();
 
             if anim_state.loose_insert.applies_to_pos((row, col)) {
-                let [x, y] = [0.0, anim_state.loose_insert.distance_left * cell_size] * anim_state.loose_insert.offset_dir;
-                ctx.translate(x, y);
+                let [x, y] = [0.0, anim_state.loose_insert.distance_left * cell_size]
+                    * anim_state.loose_insert.offset_dir;
+                ctx.translate(x, y).unwrap_throw();
             };
 
             let should = mode == DrawMode::All || token.player_id == local_id;
@@ -652,13 +734,31 @@ impl BoardView {
                 ctx.begin_path();
                 ctx.set_fill_style(&player.color.into());
                 let [x, y] = tile.center();
-                ctx.ellipse(x, y, token_radius, token_radius, 0.0, 0.0, ::std::f64::consts::PI * 2.0);
+                ctx.ellipse(
+                    x,
+                    y,
+                    token_radius,
+                    token_radius,
+                    0.0,
+                    0.0,
+                    ::std::f64::consts::PI * 2.0,
+                )
+                    .unwrap_throw();
                 ctx.fill();
                 if token.player_id == local_id {
                     let dot_radius = token_radius - wall_width / 2.0;
                     ctx.begin_path();
                     ctx.set_fill_style(&JsValue::from_str("black"));
-                    ctx.ellipse(x, y, dot_radius, dot_radius, 0.0, 0.0, ::std::f64::consts::PI * 2.0);
+                    ctx.ellipse(
+                        x,
+                        y,
+                        dot_radius,
+                        dot_radius,
+                        0.0,
+                        0.0,
+                        ::std::f64::consts::PI * 2.0,
+                    )
+                        .unwrap_throw();
                     ctx.fill();
                 }
             }
@@ -667,10 +767,7 @@ impl BoardView {
         }
     }
 
-    fn draw_ui(
-        &self, controller: &BoardController, local_id: PlayerID,
-        ctx: &Context,
-    ) {
+    fn draw_ui(&self, controller: &BoardController, local_id: PlayerID, ctx: &Context) {
         let (cell_size, _, _) = self.tile_padding(controller, ctx);
         let anim_state = anim::STATE.read().unwrap();
 
@@ -678,13 +775,22 @@ impl BoardView {
         {
             let cell = self.loose_tile_extents(controller, ctx);
             ctx.save();
-            if anim_state.loose_insert.applies_to_loose(controller.board.loose_tile_position) {
-                let [x, y] = [0.0, anim_state.loose_insert.distance_left * cell_size] * anim_state.loose_insert.offset_dir;
-                ctx.translate(x, y);
+            if anim_state
+                .loose_insert
+                .applies_to_loose(controller.board.loose_tile_position)
+            {
+                let [x, y] = [0.0, anim_state.loose_insert.distance_left * cell_size]
+                    * anim_state.loose_insert.offset_dir;
+                ctx.translate(x, y).unwrap_throw();
             };
             self.draw_tile(
-                &controller.board.loose_tile, cell, self.settings.background_color,
-                false, true, controller, local_id,
+                &controller.board.loose_tile,
+                cell,
+                self.settings.background_color,
+                false,
+                true,
+                controller,
+                local_id,
                 ctx,
             );
             ctx.restore();
@@ -702,19 +808,21 @@ impl BoardView {
             let text = format!("It is {}'s turn", whose_turn.name);
             let x = south_panel.west + cell_size * 1.5;
             let y = south_panel.north + 20.0;
-            ctx.fill_text(&text, x, y);
+            ctx.fill_text(&text, x, y).unwrap_throw();
             if my_turn {
                 let text = match controller.turn_state {
-                    TurnState::InsertTile => "Right-click at a triangle to rotate, left-click to insert",
+                    TurnState::InsertTile => {
+                        "Right-click at a triangle to rotate, left-click to insert"
+                    }
                     TurnState::MoveToken => "Click on a reachable tile, or yourself to not move",
                 };
                 let y = y + 30.0;
-                ctx.fill_text(&text, x, y);
+                ctx.fill_text(&text, x, y).unwrap_throw();
             }
             if let Some(tutorial_step) = &controller.board.tutorial_step {
                 let text = tutorial_step.text();
                 let y = y + 60.0;
-                ctx.fill_text(&text, x, y);
+                ctx.fill_text(&text, x, y).unwrap_throw();
             }
 
             ctx.restore();
@@ -734,16 +842,25 @@ impl BoardView {
                 let token = &controller.board.player_tokens[player_id];
 
                 ctx.set_fill_style(&self.settings.text_color.into());
-                ctx.fill_text(&player.name, x, y);
+                ctx.fill_text(&player.name, x, y).unwrap_throw();
                 y += 10.0;
 
                 ctx.begin_path();
                 ctx.set_fill_style(&player.color.into());
-                ctx.ellipse(x + 7.5, y + 7.5, 7.5, 7.5, 0.0, 0.0, ::std::f64::consts::PI * 2.0);
+                ctx.ellipse(
+                    x + 7.5,
+                    y + 7.5,
+                    7.5,
+                    7.5,
+                    0.0,
+                    0.0,
+                    ::std::f64::consts::PI * 2.0,
+                )
+                    .unwrap_throw();
                 ctx.fill();
                 ctx.set_fill_style(&self.settings.text_color.into());
                 let text = format!("score: {}", token.score);
-                ctx.fill_text(&text, x + 20.0, y + 10.0);
+                ctx.fill_text(&text, x + 20.0, y + 10.0).unwrap_throw();
                 y += 40.0;
             }
 

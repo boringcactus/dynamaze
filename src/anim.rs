@@ -16,9 +16,7 @@ impl TargetStripeState {
     const LENGTH: f64 = 2.0;
 
     fn new() -> TargetStripeState {
-        TargetStripeState {
-            offset: 0.0,
-        }
+        TargetStripeState { offset: 0.0 }
     }
 
     fn advance_by(&mut self, ticks: f64) {
@@ -48,9 +46,7 @@ impl LooseRotateState {
     const LENGTH: f64 = 0.25;
 
     fn new() -> LooseRotateState {
-        LooseRotateState {
-            angle: 0.0,
-        }
+        LooseRotateState { angle: 0.0 }
     }
 
     fn reset(&mut self, dir: RotateDir) {
@@ -137,7 +133,7 @@ pub struct AnimGlobalState {
     pub target_stripe: TargetStripeState,
     pub loose_rotate: LooseRotateState,
     pub loose_insert: LooseInsertState,
-    net_send: Option<mpsc::Sender<MessageCtrl>>
+    net_send: Option<mpsc::Sender<MessageCtrl>>,
 }
 
 impl AnimGlobalState {
@@ -163,7 +159,7 @@ impl AnimGlobalState {
     pub fn apply(&mut self, msg: AnimSync) {
         match msg {
             AnimSync::Rotate(dir) => self.loose_rotate.reset(dir),
-            AnimSync::Insert(dir, x) => self.loose_insert.reset(dir, x)
+            AnimSync::Insert(dir, x) => self.loose_insert.reset(dir, x),
         }
     }
 
@@ -171,7 +167,9 @@ impl AnimGlobalState {
         self.apply(sync.clone());
         if let Some(ref mut send) = self.net_send {
             let message = Message::Anim(sync);
-            send.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+            send.try_send(message.into())
+                .map_err(|_| ())
+                .expect("Failed to send message");
         }
     }
 }
@@ -183,7 +181,5 @@ pub enum AnimSync {
 }
 
 lazy_static! {
-    pub static ref STATE: RwLock<AnimGlobalState> = {
-        RwLock::new(AnimGlobalState::new())
-    };
+    pub static ref STATE: RwLock<AnimGlobalState> = { RwLock::new(AnimGlobalState::new()) };
 }

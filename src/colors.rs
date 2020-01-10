@@ -10,7 +10,12 @@ pub struct Color(pub f32, pub f32, pub f32);
 
 impl Into<JsValue> for Color {
     fn into(self) -> JsValue {
-        JsValue::from_str(&format!("rgb({}%, {}%, {}%)", self.0 * 100.0, self.1 * 100.0, self.2 * 100.0))
+        JsValue::from_str(&format!(
+            "rgb({}%, {}%, {}%)",
+            self.0 * 100.0,
+            self.1 * 100.0,
+            self.2 * 100.0
+        ))
     }
 }
 
@@ -24,7 +29,13 @@ impl Distribution<Color> for Standard {
 }
 
 macro_rules! color {
-    ($r: expr, $g: expr, $b: expr) => {Color(($r as f32) / 255.0, ($g as f32) / 255.0, ($b as f32) / 255.0)};
+    ($r: expr, $g: expr, $b: expr) => {
+        Color(
+            ($r as f32) / 255.0,
+            ($g as f32) / 255.0,
+            ($b as f32) / 255.0,
+        )
+    };
 }
 
 pub const DARK: Color = color!(0x30, 0x29, 0x2F);

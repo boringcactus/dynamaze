@@ -37,7 +37,7 @@ impl Player {
             name,
             color,
             id,
-            parent: Some(parent)
+            parent: Some(parent),
         }
     }
 }

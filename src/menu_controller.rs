@@ -19,11 +19,15 @@ use crate::tutorial;
 
 fn get_context(main: &web_sys::Element) -> Option<Context> {
     let canvas = main.query_selector("canvas").unwrap_throw()?;
-    let canvas = canvas.dyn_ref::<web_sys::HtmlCanvasElement>().unwrap_throw();
+    let canvas = canvas
+        .dyn_ref::<web_sys::HtmlCanvasElement>()
+        .unwrap_throw();
     let ctx = canvas.get_context("2d").unwrap_throw().unwrap_throw();
     let ctx = ctx.dyn_ref::<Context>().unwrap_throw();
     Some(ctx.clone())
 }
+
+type DeferredAction = Box<dyn FnOnce(&mut GameController)>;
 
 /// Handles events for DynaMaze game
 pub struct GameController {
@@ -38,7 +42,7 @@ pub struct GameController {
     /// Sound controller
     pub sound_engine: SoundEngine,
     /// Action queue
-    pub actions: Arc<Mutex<Vec<Box<dyn FnOnce(&mut GameController)>>>>,
+    pub actions: Arc<Mutex<Vec<DeferredAction>>>,
 }
 
 impl GameController {
@@ -69,10 +73,7 @@ impl GameController {
         let state = Arc::new(RwLock::new(state));
         let sender = net::run_dummy(state.clone());
         anim::STATE.write().unwrap().set_send(sender.clone());
-        let conn_state = ConnectedState {
-            state,
-            sender,
-        };
+        let conn_state = ConnectedState { state, sender };
         self.state = GameState::InGame(conn_state);
     }
 
@@ -85,17 +86,14 @@ impl GameController {
     }
 
     fn do_connect(&mut self) {
-        if let GameState::ConnectMenu(ref address) = self.state {
+        if let GameState::ConnectMenu(ref _address) = self.state {
             let state = NetGameState::Error("Connecting...".to_string());
             let state = Arc::new(RwLock::new(state));
             let mut sender = net::run_dummy(state.clone());
             anim::STATE.write().unwrap().set_send(sender.clone());
             let player = Player::new("Guesty McGuestface".into(), random(), self.player_id);
             NetGameState::join_lobby(&mut sender, player);
-            let conn_state = ConnectedState {
-                sender,
-                state,
-            };
+            let conn_state = ConnectedState { sender, state };
             self.state = GameState::InGame(conn_state);
         }
     }
@@ -122,7 +120,10 @@ impl GameController {
                     self.broadcast_state();
                 } else {
                     let message = Message::EditPlayer(self.player_id, player.clone());
-                    sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+                    sender
+                        .try_send(message.into())
+                        .map_err(|_| ())
+                        .expect("Failed to send message");
                 }
             }
         }
@@ -142,7 +143,10 @@ impl GameController {
                     self.broadcast_state();
                 } else {
                     let message = Message::EditPlayer(self.player_id, player.clone());
-                    sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+                    sender
+                        .try_send(message.into())
+                        .map_err(|_| ())
+                        .expect("Failed to send message");
                 }
             }
         }
@@ -162,7 +166,10 @@ impl GameController {
                     drop(state);
                     self.broadcast_state();
                 } else {
-                    sender.try_send(Message::JoinLobby(child).into()).map_err(|_| ()).expect("Failed to pass message")
+                    sender
+                        .try_send(Message::JoinLobby(child).into())
+                        .map_err(|_| ())
+                        .expect("Failed to pass message")
                 }
             }
         }
@@ -195,7 +202,10 @@ impl GameController {
     fn main_menu(&mut self) {
         if let GameState::InGame(ref mut conn_state) = self.state {
             let sender = &mut conn_state.sender;
-            sender.try_send(MessageCtrl::Disconnect).map_err(|e| println!("{:?}", e)).unwrap_or(());
+            sender
+                .try_send(MessageCtrl::Disconnect)
+                .map_err(|e| println!("{:?}", e))
+                .unwrap_or(());
             println!("Attempted to disconnect");
         }
         self.sound_engine.fetch_volume();
@@ -209,8 +219,10 @@ impl GameController {
         let old_last_player = self.last_player;
 
         let music = match self.state {
-            GameState::MainMenu | GameState::ConnectMenu(_) |
-            GameState::HardError(_) | GameState::Options(_) => {
+            GameState::MainMenu
+            | GameState::ConnectMenu(_)
+            | GameState::HardError(_)
+            | GameState::Options(_) => {
                 self.last_player = None;
                 sound::Music::Menu
             }
@@ -252,7 +264,12 @@ impl GameController {
             let (broadcast, new_state, new_net_state) = {
                 let mut state = state.write().expect("Failed to lock state");
                 if let NetGameState::Active(ref mut board_controller) = *state {
-                    let state_dirty = board_controller.on_click(event, self.player_id, &self.view.board_view, &get_context(main).unwrap_throw());
+                    let state_dirty = board_controller.on_click(
+                        event,
+                        self.player_id,
+                        &self.view.board_view,
+                        &get_context(main).unwrap_throw(),
+                    );
                     web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("clicked in board"));
                     if state_dirty {
                         event.prevent_default();
@@ -292,7 +309,12 @@ impl GameController {
             let (broadcast, new_state, new_net_state) = {
                 let mut state = state.write().expect("Failed to lock state");
                 if let NetGameState::Active(ref mut board_controller) = *state {
-                    let state_dirty = board_controller.on_mousemove(event, self.player_id, &self.view.board_view, &get_context(main).unwrap_throw());
+                    let state_dirty = board_controller.on_mousemove(
+                        event,
+                        self.player_id,
+                        &self.view.board_view,
+                        &get_context(main).unwrap_throw(),
+                    );
                     if state_dirty {
                         if let Some(winner) = board_controller.winner() {
                             let info = GameOverInfo {
@@ -324,7 +346,7 @@ impl GameController {
     }
 
     /// Handles keydown event
-    pub fn on_keydown(&mut self, event: &web_sys::KeyboardEvent, main: &web_sys::Element) {
+    pub fn on_keydown(&mut self, event: &web_sys::KeyboardEvent, _main: &web_sys::Element) {
         if let GameState::InGame(ref mut conn_state) = self.state {
             let state = &mut conn_state.state;
             let (broadcast, new_state, new_net_state) = {
@@ -370,49 +392,36 @@ impl GameController {
     }
 
     fn broadcast_state(&mut self) {
-        if let GameState::InGame(ref mut conn_state) = self.state {
+        if let GameState::InGame(ref mut _conn_state) = self.state {
             web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("not broadcasting"));
             return;
-            let sender = &mut conn_state.sender;
-            let state = &mut conn_state.state;
+            let sender = &mut _conn_state.sender;
+            let state = &mut _conn_state.state;
             let state = state.read().expect("Failed to lock state");
             let message = Message::State(state.clone());
-            sender.try_send(message.into()).map_err(|_| ()).expect("Failed to send message");
+            sender
+                .try_send(message.into())
+                .map_err(|_| ())
+                .expect("Failed to send message");
         }
     }
 
     fn curr_class(&self) -> &'static str {
         match self.state {
-            GameState::MainMenu => {
-                "main-menu"
-            }
-            GameState::ConnectMenu(_) => {
-                "connect-menu"
-            }
+            GameState::MainMenu => "main-menu",
+            GameState::ConnectMenu(_) => "connect-menu",
             GameState::InGame(ref conn_state) => {
                 let state = &conn_state.state;
                 let state = state.read().expect("Failed to lock state");
                 match *state {
-                    NetGameState::Lobby(ref info) => {
-                        "lobby"
-                    }
-                    NetGameState::Active(_) => {
-                        "active"
-                    }
-                    NetGameState::GameOver(ref info) => {
-                        "game-over"
-                    }
-                    NetGameState::Error(ref text) => {
-                        "error"
-                    }
+                    NetGameState::Lobby(_) => "lobby",
+                    NetGameState::Active(_) => "active",
+                    NetGameState::GameOver(_) => "game-over",
+                    NetGameState::Error(_) => "error",
                 }
             }
-            GameState::HardError(_) => {
-                "hard-error"
-            }
-            GameState::Options(_) => {
-                "options"
-            }
+            GameState::HardError(_) => "hard-error",
+            GameState::Options(_) => "options",
         }
     }
 
@@ -453,53 +462,55 @@ impl GameController {
                 let header = document.create_element("h1").unwrap_throw();
                 let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 header.set_inner_text("DynaMaze");
-                main.append_with_node_1(&header);
+                main.append_with_node_1(&header).unwrap_throw();
 
                 let tutorial = document.create_element("button").unwrap_throw();
                 let tutorial = tutorial.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 tutorial.set_inner_text("Tutorial");
-                main.append_with_node_1(&tutorial);
+                main.append_with_node_1(&tutorial).unwrap_throw();
                 EventListener::once(&tutorial, "click", defer!(self.tutorial())).forget();
 
                 let host = document.create_element("button").unwrap_throw();
                 let host = host.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 host.set_inner_text("Host Game");
-                main.append_with_node_1(&host);
+                main.append_with_node_1(&host).unwrap_throw();
                 EventListener::once(&host, "click", defer!(self.host())).forget();
 
                 let connect = document.create_element("button").unwrap_throw();
                 let connect = connect.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 connect.set_inner_text("Join Game");
-                main.append_with_node_1(&connect);
+                main.append_with_node_1(&connect).unwrap_throw();
                 EventListener::once(&connect, "click", defer!(self.connect())).forget();
 
                 let options = document.create_element("button").unwrap_throw();
                 let options = options.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 options.set_inner_text("Options");
-                main.append_with_node_1(&options);
+                main.append_with_node_1(&options).unwrap_throw();
                 EventListener::once(&options, "click", defer!(self.enter_options())).forget();
             }
-            GameState::ConnectMenu(ref mut connect_addr) => {
+            GameState::ConnectMenu(ref mut _connect_addr) => {
                 let header = document.create_element("h1").unwrap_throw();
                 let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 header.set_inner_text("Connect to Game");
-                main.append_with_node_1(&header);
+                main.append_with_node_1(&header).unwrap_throw();
 
                 let main_menu = document.create_element("button").unwrap_throw();
                 let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 main_menu.set_inner_text("Main Menu");
-                main.append_with_node_1(&main_menu);
+                main.append_with_node_1(&main_menu).unwrap_throw();
                 EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
 
                 let connect_text = document.create_element("input").unwrap_throw();
-                let connect_text = connect_text.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                main.append_with_node_1(&connect_text);
+                let connect_text = connect_text
+                    .dyn_ref::<web_sys::HtmlElement>()
+                    .unwrap_throw();
+                main.append_with_node_1(&connect_text).unwrap_throw();
                 // TODO handle Enter, probably with a form
 
                 let connect = document.create_element("button").unwrap_throw();
                 let connect = connect.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 connect.set_inner_text("Connect");
-                main.append_with_node_1(&connect);
+                main.append_with_node_1(&connect).unwrap_throw();
                 EventListener::once(&connect, "click", defer!(self.do_connect())).forget();
             }
             GameState::InGame(ref conn_state) => {
@@ -511,7 +522,11 @@ impl GameController {
                         let status = if is_host {
                             let local_piece = match info.local_addr {
                                 Ok(ref addr) => format!("Local: {}", addr),
-                                Err(ref err) => format!("Local on port {} - error: {}", crate::net::LOCAL_PORT, err),
+                                Err(ref err) => format!(
+                                    "Local on port {} - error: {}",
+                                    crate::net::LOCAL_PORT,
+                                    err
+                                ),
                             };
                             let remote_piece = match info.remote_addr {
                                 Ok(ref addr) => format!("Remote: {}", addr),
@@ -524,20 +539,20 @@ impl GameController {
                         let header = document.create_element("h1").unwrap_throw();
                         let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         header.set_inner_text(&status);
-                        main.append_with_node_1(&header);
+                        main.append_with_node_1(&header).unwrap_throw();
 
                         let main_menu = document.create_element("button").unwrap_throw();
                         let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         main_menu.set_inner_text("Main Menu");
-                        main.append_with_node_1(&main_menu);
+                        main.append_with_node_1(&main_menu).unwrap_throw();
                         EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
 
                         let me = info.player(&self.player_id);
 
                         let name_box = document.create_element("input").unwrap_throw();
                         let name_box = name_box.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        name_box.set_attribute("value", &me.name);
-                        main.append_with_node_1(&name_box);
+                        name_box.set_attribute("value", &me.name).unwrap_throw();
+                        main.append_with_node_1(&name_box).unwrap_throw();
                         // TODO catch changes with self.set_own_name()
 
                         // TODO circle with color me.color
@@ -550,45 +565,48 @@ impl GameController {
                             let start = document.create_element("button").unwrap_throw();
                             let start = start.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                             start.set_inner_text("Begin Game");
-                            main.append_with_node_1(&start);
-                            EventListener::once(&start, "click", defer!(self.start_hosted_game())).forget();
+                            main.append_with_node_1(&start).unwrap_throw();
+                            EventListener::once(&start, "click", defer!(self.start_hosted_game()))
+                                .forget();
                         }
                     }
                     NetGameState::Active(_) => {
                         let canvas = document.create_element("canvas").unwrap_throw();
-                        let canvas = canvas.dyn_ref::<web_sys::HtmlCanvasElement>().unwrap_throw();
+                        let canvas = canvas
+                            .dyn_ref::<web_sys::HtmlCanvasElement>()
+                            .unwrap_throw();
                         canvas.set_width(1000);
                         canvas.set_height(800);
-                        main.append_with_node_1(&canvas);
+                        main.append_with_node_1(&canvas).unwrap_throw();
                     }
                     NetGameState::GameOver(ref info) => {
                         let text = format!("{} wins!", info.winner.name);
                         let header = document.create_element("h1").unwrap_throw();
                         let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         header.set_inner_text(&text);
-                        main.append_with_node_1(&header);
+                        main.append_with_node_1(&header).unwrap_throw();
 
                         let main_menu = document.create_element("button").unwrap_throw();
                         let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         main_menu.set_inner_text("Main Menu");
-                        main.append_with_node_1(&main_menu);
+                        main.append_with_node_1(&main_menu).unwrap_throw();
                         EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
                     }
                     NetGameState::Error(ref text) => {
                         let header = document.create_element("h1").unwrap_throw();
                         let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         header.set_inner_text("Error");
-                        main.append_with_node_1(&header);
+                        main.append_with_node_1(&header).unwrap_throw();
 
                         let body = document.create_element("p").unwrap_throw();
                         let body = body.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         body.set_inner_text(text);
-                        main.append_with_node_1(&body);
+                        main.append_with_node_1(&body).unwrap_throw();
 
                         let main_menu = document.create_element("button").unwrap_throw();
                         let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         main_menu.set_inner_text("Main Menu");
-                        main.append_with_node_1(&main_menu);
+                        main.append_with_node_1(&main_menu).unwrap_throw();
                         EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
                     }
                 }
@@ -597,24 +615,24 @@ impl GameController {
                 let header = document.create_element("h1").unwrap_throw();
                 let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 header.set_inner_text("Error");
-                main.append_with_node_1(&header);
+                main.append_with_node_1(&header).unwrap_throw();
 
                 let body = document.create_element("p").unwrap_throw();
                 let body = body.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 body.set_inner_text(text);
-                main.append_with_node_1(&body);
+                main.append_with_node_1(&body).unwrap_throw();
 
                 let main_menu = document.create_element("button").unwrap_throw();
                 let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 main_menu.set_inner_text("Main Menu");
-                main.append_with_node_1(&main_menu);
+                main.append_with_node_1(&main_menu).unwrap_throw();
                 EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
             }
-            GameState::Options(ref mut curr_options) => {
+            GameState::Options(ref mut _curr_options) => {
                 let header = document.create_element("h1").unwrap_throw();
                 let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 header.set_inner_text("Options");
-                main.append_with_node_1(&header);
+                main.append_with_node_1(&header).unwrap_throw();
 
                 // TODO slider for music level with poke_options
 
@@ -623,13 +641,13 @@ impl GameController {
                 let save_button = document.create_element("button").unwrap_throw();
                 let save_button = save_button.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 save_button.set_inner_text("Save");
-                main.append_with_node_1(&save_button);
+                main.append_with_node_1(&save_button).unwrap_throw();
                 EventListener::once(&save_button, "click", defer!(self.save_options())).forget();
 
                 let main_menu = document.create_element("button").unwrap_throw();
                 let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 main_menu.set_inner_text("Main Menu");
-                main.append_with_node_1(&main_menu);
+                main.append_with_node_1(&main_menu).unwrap_throw();
                 EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
             }
         }

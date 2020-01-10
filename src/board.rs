@@ -86,10 +86,26 @@ impl Board {
             cells.push(row);
         }
         // set corners
-        cells[0][0] = Tile { shape: Shape::L, orientation: Direction::East, whose_target: None };
-        cells[0][width - 1] = Tile { shape: Shape::L, orientation: Direction::South, whose_target: None };
-        cells[height - 1][0] = Tile { shape: Shape::L, orientation: Direction::North, whose_target: None };
-        cells[height - 1][width - 1] = Tile { shape: Shape::L, orientation: Direction::West, whose_target: None };
+        cells[0][0] = Tile {
+            shape: Shape::L,
+            orientation: Direction::East,
+            whose_target: None,
+        };
+        cells[0][width - 1] = Tile {
+            shape: Shape::L,
+            orientation: Direction::South,
+            whose_target: None,
+        };
+        cells[height - 1][0] = Tile {
+            shape: Shape::L,
+            orientation: Direction::North,
+            whose_target: None,
+        };
+        cells[height - 1][width - 1] = Tile {
+            shape: Shape::L,
+            orientation: Direction::West,
+            whose_target: None,
+        };
         // ensure top/bottom fixed tiles point inwards
         for i in 0..width {
             if i % 2 == 0 {
@@ -98,24 +114,29 @@ impl Board {
             }
         }
         // ensure left/right fixed tiles point inwards
-        #[allow(clippy::needless_range_loop)] for i in 0..height {
+        #[allow(clippy::needless_range_loop)]
+            for i in 0..height {
             if i % 2 == 0 {
                 avoid_path(&mut cells[i][0], Direction::West);
                 avoid_path(&mut cells[i][width - 1], Direction::East);
             }
         }
         // create tokens
-        let player_tokens = players.values().enumerate().map(move |(i, player)| {
-            let mut rng = thread_rng();
-            let position = match i {
-                0 => (0, 0),
-                1 => (height - 1, width - 1),
-                2 => (0, width - 1),
-                3 => (height - 1, 0),
-                _ => (rng.gen_range(0, height), rng.gen_range(0, width)),
-            };
-            (player.id, PlayerToken::new(player, position))
-        }).collect();
+        let player_tokens = players
+            .values()
+            .enumerate()
+            .map(move |(i, player)| {
+                let mut rng = thread_rng();
+                let position = match i {
+                    0 => (0, 0),
+                    1 => (height - 1, width - 1),
+                    2 => (0, width - 1),
+                    3 => (height - 1, 0),
+                    _ => (rng.gen_range(0, height), rng.gen_range(0, width)),
+                };
+                (player.id, PlayerToken::new(player, position))
+            })
+            .collect();
         let loose_tile_edge = rng.gen();
         let loose_tile_spot = match loose_tile_edge {
             Direction::North | Direction::South => rng.gen_range(0, height / 2),
@@ -147,7 +168,13 @@ impl Board {
                 } else {
                     Some(result)
                 }
-            }).map(|line| line.chars().filter_map(|x| Tile::try_from(x).ok()).collect()).collect()
+            })
+            .map(|line| {
+                line.chars()
+                    .filter_map(|x| Tile::try_from(x).ok())
+                    .collect()
+            })
+            .collect()
     }
 
     /// Gets a cell from the board
@@ -216,12 +243,18 @@ impl Board {
 
     /// Gets the (row, col) position of the given player
     pub fn player_pos(&self, id: PlayerID) -> (usize, usize) {
-        self.player_tokens.get(&id).expect("No token for player with given ID").position
+        self.player_tokens
+            .get(&id)
+            .expect("No token for player with given ID")
+            .position
     }
 
     /// Moves the given player to the given (row, col)
     pub fn move_player(&mut self, id: PlayerID, pos: (usize, usize)) {
-        self.player_tokens.get_mut(&id).expect("No token for player with given ID").position = pos;
+        self.player_tokens
+            .get_mut(&id)
+            .expect("No token for player with given ID")
+            .position = pos;
     }
 
     fn add_reachable_coords(&self, from: (usize, usize), result: &mut HashSet<(usize, usize)>) {
@@ -238,7 +271,10 @@ impl Board {
                     // find the connecting tile
                     let (next_row, next_col) = (curr_row, curr_col) + dir;
                     // if that tile connects up as well...
-                    if self.cells[next_row][next_col].paths().contains(&(dir * Direction::South)) {
+                    if self.cells[next_row][next_col]
+                        .paths()
+                        .contains(&(dir * Direction::South))
+                    {
                         // if we've never seen that location before...
                         if !result.contains(&(next_row, next_col)) {
                             // add it to frontier and result
@@ -290,8 +326,13 @@ impl Board {
         let all_targets = (0..self.height())
             .flat_map(|row| (0..self.width()).map(move |col| (row, col)))
             .collect::<HashSet<_>>();
-        let banned_targets = [(old_row, old_col)].iter()
-            .chain(all_targets.iter().filter(|p| self.get([p.1, p.0]).whose_target.is_some()))
+        let banned_targets = [(old_row, old_col)]
+            .iter()
+            .chain(
+                all_targets
+                    .iter()
+                    .filter(|p| self.get([p.1, p.0]).whose_target.is_some()),
+            )
             .cloned()
             .collect::<HashSet<_>>();
         let all_targets = &all_targets - &banned_targets;
@@ -301,7 +342,10 @@ impl Board {
         } else {
             all_targets
         };
-        let (row, col) = valid_targets.into_iter().choose(&mut rng).expect("Failed to choose next target");
+        let (row, col) = valid_targets
+            .into_iter()
+            .choose(&mut rng)
+            .expect("Failed to choose next target");
         self.cells[row][col].whose_target = Some(player_id);
     }
 

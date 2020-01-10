@@ -44,7 +44,10 @@ fn main() {
     let window = web_sys::window().expect("no window");
     let main = {
         let document = window.document().expect_throw("no document");
-        document.query_selector("main").expect_throw("failed to find main").expect_throw("failed to find main")
+        document
+            .query_selector("main")
+            .expect_throw("failed to find main")
+            .expect_throw("failed to find main")
     };
 
     web_sys::console::log_1(&JsValue::from_str("started controller new"));
@@ -56,10 +59,13 @@ fn main() {
         let game_controller = game_controller.clone();
         let main2 = main.clone();
         let options = EventListenerOptions::enable_prevent_default();
-        let click_listener = EventListener::new_with_options(&main, "click", options, move |event| {
-            let event = event.dyn_ref::<web_sys::MouseEvent>().expect_throw("bad click event");
-            game_controller.lock().unwrap().on_click(event, &main2);
-        });
+        let click_listener =
+            EventListener::new_with_options(&main, "click", options, move |event| {
+                let event = event
+                    .dyn_ref::<web_sys::MouseEvent>()
+                    .expect_throw("bad click event");
+                game_controller.lock().unwrap().on_click(event, &main2);
+            });
         click_listener.forget();
     }
 
@@ -67,10 +73,13 @@ fn main() {
         let game_controller = game_controller.clone();
         let main2 = main.clone();
         let options = EventListenerOptions::enable_prevent_default();
-        let contextmenu_listener = EventListener::new_with_options(&main, "contextmenu", options, move |event| {
-            let event = event.dyn_ref::<web_sys::MouseEvent>().expect_throw("bad contextmenu event");
-            game_controller.lock().unwrap().on_click(event, &main2);
-        });
+        let contextmenu_listener =
+            EventListener::new_with_options(&main, "contextmenu", options, move |event| {
+                let event = event
+                    .dyn_ref::<web_sys::MouseEvent>()
+                    .expect_throw("bad contextmenu event");
+                game_controller.lock().unwrap().on_click(event, &main2);
+            });
         contextmenu_listener.forget();
     }
 
@@ -78,7 +87,9 @@ fn main() {
         let game_controller = game_controller.clone();
         let main2 = main.clone();
         let mousemove_listener = EventListener::new(&main, "mousemove", move |event| {
-            let event = event.dyn_ref::<web_sys::MouseEvent>().expect_throw("bad mousemove event");
+            let event = event
+                .dyn_ref::<web_sys::MouseEvent>()
+                .expect_throw("bad mousemove event");
             game_controller.lock().unwrap().on_mousemove(event, &main2);
         });
         mousemove_listener.forget();
@@ -88,7 +99,9 @@ fn main() {
         let game_controller = game_controller.clone();
         let main2 = main.clone();
         let keydown_listener = EventListener::new(&main, "keydown", move |event| {
-            let event = event.dyn_ref::<web_sys::KeyboardEvent>().expect_throw("bad keydown event");
+            let event = event
+                .dyn_ref::<web_sys::KeyboardEvent>()
+                .expect_throw("bad keydown event");
             game_controller.lock().unwrap().on_keydown(event, &main2);
         });
         keydown_listener.forget();
@@ -109,10 +122,28 @@ fn main() {
                 this_frame
             };
             game_controller.lock().unwrap().draw(&main);
-            window.request_animation_frame(inner_handle.borrow().as_ref().unwrap().as_ref().unchecked_ref());
+            window
+                .request_animation_frame(
+                    inner_handle
+                        .borrow()
+                        .as_ref()
+                        .unwrap()
+                        .as_ref()
+                        .unchecked_ref(),
+                )
+                .unwrap_throw();
         }) as Box<dyn FnMut()>));
     }
-    window.request_animation_frame(outer_handle.borrow().as_ref().unwrap().as_ref().unchecked_ref());
+    window
+        .request_animation_frame(
+            outer_handle
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unchecked_ref(),
+        )
+        .unwrap_throw();
 }
 
 fn now() -> f64 {

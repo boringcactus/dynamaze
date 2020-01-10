@@ -15,18 +15,17 @@ pub fn new_conn_state(player_id: PlayerID) -> ConnectedState {
         width: 3,
         height: 3,
     };
-    let players = vec![
-        Player::new("Player 1".to_string(), colors::Color(0.2, 0.4, 0.6), player_id),
-    ];
+    let players = vec![Player::new(
+        "Player 1".to_string(),
+        colors::Color(0.2, 0.4, 0.6),
+        player_id,
+    )];
     let mut board = BoardController::new(settings, players, player_id);
     TutorialStep::First.apply(&mut board.board);
     let state = NetGameState::Active(board);
     let state = Arc::new(RwLock::new(state));
     let sender = net::run_dummy(state.clone());
-    ConnectedState {
-        sender,
-        state,
-    }
+    ConnectedState { sender, state }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -44,9 +43,11 @@ impl TutorialStep {
     pub fn apply(&self, board: &mut Board) {
         match *self {
             TutorialStep::First => {
-                board.cells = Board::parse_board(r"
+                board.cells = Board::parse_board(
+                    r"
                     ───│───
-                ");
+                ",
+                );
                 board.loose_tile = '│'.try_into().unwrap();
                 board.loose_tile_position = (Direction::North, 1);
                 let players = board.player_tokens.keys().collect::<Vec<_>>();
@@ -59,7 +60,8 @@ impl TutorialStep {
                 board.tutorial_step = Some(TutorialStep::First);
             }
             TutorialStep::Second => {
-                board.cells = Board::parse_board(r"
+                board.cells = Board::parse_board(
+                    r"
                     ┘┘┘┘┘┘┘
                     ┘┘┘┘┘┘┘
                     ┘┘┘┘┘┘┘
@@ -67,7 +69,8 @@ impl TutorialStep {
                     ┘┘┘┘┘┘┘
                     ┘┘┘┘┘┘┘
                     ┘┘┘┘┘┘┘
-                ");
+                ",
+                );
                 board.loose_tile = '┌'.try_into().unwrap();
                 board.loose_tile_position = (Direction::East, 2);
                 let players = board.player_tokens.keys().collect::<Vec<_>>();
@@ -80,7 +83,8 @@ impl TutorialStep {
                 board.tutorial_step = Some(TutorialStep::Second);
             }
             TutorialStep::Third => {
-                board.cells = Board::parse_board(r"
+                board.cells = Board::parse_board(
+                    r"
                     ┌────┘┘
                     └─┐┘┘┘┘
                     ┘┘┘┘┘┘┘
@@ -88,7 +92,8 @@ impl TutorialStep {
                     ┘┘┘┘┘┘┘
                     ┘┘┘┘┘┘┘
                     ┘┘┘┘┘┘┘
-                ");
+                ",
+                );
                 board.loose_tile = '─'.try_into().unwrap();
                 board.loose_tile_position = (Direction::North, 2);
                 let players = board.player_tokens.keys().collect::<Vec<_>>();
@@ -107,8 +112,12 @@ impl TutorialStep {
     pub fn text(&self) -> &str {
         match *self {
             TutorialStep::First => "You're the circle, your target is the striped square.",
-            TutorialStep::Second => "Targets can be pushed off the board; if you get to insert your own, put it nearby.",
-            TutorialStep::Third => "If you push yourself off the board, you'll reappear on the other side.",
+            TutorialStep::Second => {
+                "Targets can be pushed off the board; if you get to insert your own, put it nearby."
+            }
+            TutorialStep::Third => {
+                "If you push yourself off the board, you'll reappear on the other side."
+            }
         }
     }
 
