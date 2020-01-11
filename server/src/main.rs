@@ -359,7 +359,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .data(server.clone())
             // websocket
-            .service(web::resource("/").to(game_route))
+            .service(web::resource("/ws/").to(game_route))
     })
         .bind(addr)?
         .run()

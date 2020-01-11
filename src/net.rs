@@ -89,9 +89,9 @@ impl NetHandler {
             hostname == "127.0.0.1" || hostname == "localhost"
         };
         let addr = if is_localhost {
-            "ws://127.0.0.1:8080"
+            "ws://127.0.0.1:8080/ws/"
         } else {
-            "wss://api.dynamaze.fun"
+            "wss://api.dynamaze.fun/ws/"
         };
         let socket = web_sys::WebSocket::new(addr).unwrap_throw();
         socket.set_binary_type(web_sys::BinaryType::Arraybuffer);
