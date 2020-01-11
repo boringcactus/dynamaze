@@ -157,7 +157,7 @@ impl GameController {
             let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
                 let me = info.player(&self.player_id);
-                let child = Player::new_child(me.name.clone(), me.color, random(), me.id);
+                let child = Player::new_child(format!("{} - Copy", me.name), random(), random(), me.id);
                 info.guests.push(child.clone());
                 if is_host {
                     drop(state);
