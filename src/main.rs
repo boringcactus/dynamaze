@@ -108,20 +108,28 @@ fn main() {
         keydown_listener.forget();
     }
 
-    // this is *weird* but comes from https://rustwasm.github.io/wasm-bindgen/examples/request-animation-frame.html
-    let inner_handle: Rc<RefCell<Option<Closure<_>>>> = Rc::new(RefCell::new(None));
-    let outer_handle = inner_handle.clone();
-
     {
+        use gloo::timers::callback::Interval;
         let window = window.clone();
+        let game_controller = game_controller.clone();
         let mut last_frame = now();
-        *outer_handle.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+        Interval::new(1_000 / 60, move || {
             last_frame = {
                 let this_frame = now();
                 let dt = this_frame - last_frame;
                 game_controller.lock().unwrap().on_tick(dt);
                 this_frame
             };
+        }).forget();
+    }
+
+    // this is *weird* but comes from https://rustwasm.github.io/wasm-bindgen/examples/request-animation-frame.html
+    let inner_handle: Rc<RefCell<Option<Closure<_>>>> = Rc::new(RefCell::new(None));
+    let outer_handle = inner_handle.clone();
+
+    {
+        let window = window.clone();
+        *outer_handle.borrow_mut() = Some(Closure::wrap(Box::new(move || {
             game_controller.lock().unwrap().draw(&main);
             window
                 .request_animation_frame(
