@@ -91,7 +91,7 @@ impl NetHandler {
         let addr = if is_localhost {
             "ws://127.0.0.1:8080"
         } else {
-            "ws://api.dynamaze.fun"
+            "wss://api.dynamaze.fun"
         };
         let socket = web_sys::WebSocket::new(addr).unwrap_throw();
         socket.set_binary_type(web_sys::BinaryType::Arraybuffer);
