@@ -350,6 +350,10 @@ async fn main() -> std::io::Result<()> {
     // Start chat server actor
     let server = GameServer::default().start();
 
+    let addr = ("0.0.0.0", option_env!("PORT").unwrap_or("8080").parse().unwrap());
+
+    println!("Listening on {}:{}", addr.0, addr.1);
+
     // Create Http server with websocket support
     HttpServer::new(move || {
         App::new()
@@ -357,7 +361,7 @@ async fn main() -> std::io::Result<()> {
             // websocket
             .service(web::resource("/").to(game_route))
     })
-        .bind(("127.0.0.1", option_env!("PORT").unwrap_or("8080").parse().unwrap()))?
+        .bind(addr)?
         .run()
         .await
 }
