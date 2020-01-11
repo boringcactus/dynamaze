@@ -1,11 +1,11 @@
+use std::collections::VecDeque;
 use std::f64::consts::FRAC_PI_2;
-use std::sync::RwLock;
+use std::sync::{Arc, Mutex, RwLock};
 
-use futures::channel::mpsc;
 use serde::{Deserialize, Serialize};
 
 use crate::Direction;
-use crate::net::{Message, MessageCtrl};
+use crate::net::{Message, MetaMessage};
 
 /// Tracks state of the target stripe animation
 pub struct TargetStripeState {
@@ -133,7 +133,7 @@ pub struct AnimGlobalState {
     pub target_stripe: TargetStripeState,
     pub loose_rotate: LooseRotateState,
     pub loose_insert: LooseInsertState,
-    net_send: Option<mpsc::Sender<MessageCtrl>>,
+    net_queue: Option<Arc<Mutex<VecDeque<MetaMessage>>>>,
 }
 
 impl AnimGlobalState {
@@ -142,7 +142,7 @@ impl AnimGlobalState {
             target_stripe: TargetStripeState::new(),
             loose_rotate: LooseRotateState::new(),
             loose_insert: LooseInsertState::new(),
-            net_send: None,
+            net_queue: None,
         }
     }
 
@@ -152,8 +152,8 @@ impl AnimGlobalState {
         self.loose_insert.advance_by(ticks);
     }
 
-    pub fn set_send(&mut self, send: mpsc::Sender<MessageCtrl>) {
-        self.net_send = Some(send)
+    pub fn set_send(&mut self, send: Arc<Mutex<VecDeque<MetaMessage>>>) {
+        self.net_queue = Some(send)
     }
 
     pub fn apply(&mut self, msg: AnimSync) {
@@ -165,11 +165,9 @@ impl AnimGlobalState {
 
     pub fn apply_send(&mut self, sync: AnimSync) {
         self.apply(sync.clone());
-        if let Some(ref mut send) = self.net_send {
+        if let Some(ref mut send) = self.net_queue {
             let message = Message::Anim(sync);
-            send.try_send(message.into())
-                .map_err(|_| ())
-                .expect("Failed to send message");
+            send.lock().unwrap().push_back(message.into());
         }
     }
 }

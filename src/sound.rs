@@ -94,6 +94,7 @@ impl SoundEngine {
                 return;
             }
         }
+        let _ = self.context.resume();
         let mut music_sources = self.music_sources.lock().unwrap();
         let mut current_music = self.current_music.lock().unwrap();
         if let Some(ref old_music) = *current_music {
@@ -117,6 +118,7 @@ impl SoundEngine {
     }
 
     pub fn play_sound(&self, snd: Sound) {
+        let _ = self.context.resume();
         let mut sound_sources = self.sound_sources.lock().unwrap();
         let source = sound_sources.entry(snd).or_insert_with(|| {
             let source = snd.load();

@@ -1,16 +1,17 @@
 //! Networking logic
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
-use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex, RwLock};
 
-use futures::channel::mpsc;
-use futures::prelude::*;
+use bincode::{deserialize, serialize};
+use gloo::events::EventListener;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 use crate::{Player, PlayerID};
 use crate::anim;
 use crate::menu::NetGameState;
+pub use crate::meta_net::{GameID, MetaMessage};
 
 /// A message that can be sent over the network
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,116 +26,40 @@ pub enum Message {
     Anim(anim::AnimSync),
 }
 
-#[derive(Debug)]
-enum MessageCodecError {
-    AddrParse(::std::net::AddrParseError),
-    IO(::std::io::Error),
-    Send(mpsc::SendError),
-}
-
-impl Display for MessageCodecError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            MessageCodecError::AddrParse(ref x) => x.fmt(f),
-            MessageCodecError::IO(ref x) => x.fmt(f),
-            MessageCodecError::Send(ref x) => f.write_fmt(format_args!("Send({})", x)),
-        }
-    }
-}
-
-impl Error for MessageCodecError {}
-
-impl From<::std::net::AddrParseError> for MessageCodecError {
-    fn from(e: ::std::net::AddrParseError) -> Self {
-        MessageCodecError::AddrParse(e)
-    }
-}
-
-impl From<std::io::Error> for MessageCodecError {
-    fn from(e: std::io::Error) -> Self {
-        MessageCodecError::IO(e)
-    }
-}
-
-impl From<mpsc::SendError> for MessageCodecError {
-    fn from(e: mpsc::SendError) -> Self {
-        MessageCodecError::Send(e)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum MessageCtrl {
-    SendGlobal(Box<Message>),
-    SendNearGlobal(Box<Message>, SocketAddr),
-    Disconnect,
-}
-
-impl MessageCtrl {
-    pub fn send(msg: Message) -> Self {
-        MessageCtrl::SendGlobal(Box::new(msg))
-    }
-
-    pub fn send_without(msg: Message, addr: SocketAddr) -> Self {
-        MessageCtrl::SendNearGlobal(Box::new(msg), addr)
-    }
-
-    pub fn get_message_if_should_send(self, dest: SocketAddr) -> Option<Message> {
-        match self {
-            MessageCtrl::SendGlobal(m) => Some(*m),
-            MessageCtrl::SendNearGlobal(m, addr) => {
-                if addr == dest {
-                    None
-                } else {
-                    Some(*m)
-                }
-            }
-            MessageCtrl::Disconnect => None,
-        }
-    }
-}
-
-impl Into<MessageCtrl> for Message {
-    fn into(self) -> MessageCtrl {
-        MessageCtrl::SendGlobal(Box::new(self))
+impl Into<MetaMessage> for Message {
+    fn into(self) -> MetaMessage {
+        let data = serialize(&self).unwrap_throw();
+        MetaMessage::Message(data)
     }
 }
 
 fn handle_incoming(
     message: Message,
-    source: SocketAddr,
     state: Arc<RwLock<NetGameState>>,
     player_id: PlayerID,
-) -> Option<MessageCtrl> {
+) -> Option<Message> {
     let mut state = state.write().expect("Failed to acquire state");
     let is_host = state.is_host(player_id);
     match message {
         Message::JoinLobby(player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
                 lobby_info.guests.push(player);
-                return Some(MessageCtrl::send(Message::State(state.clone())));
+                if is_host {
+                    return Some(Message::State(state.clone()));
+                }
             }
         }
         Message::EditPlayer(id, player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
-                if is_host {
-                    lobby_info
-                        .guests
-                        .iter_mut()
-                        .filter(|p| p.id == id)
-                        .for_each(|p| *p = player.clone());
-                    return Some(MessageCtrl::send(Message::State(state.clone())));
-                }
+                lobby_info
+                    .guests
+                    .iter_mut()
+                    .filter(|p| p.id == id)
+                    .for_each(|p| *p = player.clone());
             }
         }
         Message::State(new_state) => {
-            // TODO only accept state from active player, probably by connecting player ID to source SocketAddr
             *state = new_state;
-            if is_host {
-                return Some(MessageCtrl::send_without(
-                    Message::State(state.clone()),
-                    source,
-                ));
-            }
         }
         Message::Anim(sync) => {
             anim::STATE.write().unwrap().apply(sync);
@@ -143,10 +68,104 @@ fn handle_incoming(
     None
 }
 
-pub const LOCAL_PORT: u16 = 12543;
+pub struct NetHandler {
+    socket: Option<web_sys::WebSocket>,
+    message_listener: Option<EventListener>,
+    queue: Arc<Mutex<VecDeque<MetaMessage>>>,
+}
 
-pub fn run_dummy(_state: Arc<RwLock<NetGameState>>) -> mpsc::Sender<MessageCtrl> {
-    let (send, recv) = mpsc::channel(20);
-    recv.map(Ok).forward(futures::sink::drain());
-    send
+impl Drop for NetHandler {
+    fn drop(&mut self) {
+        drop(self.message_listener.take());
+        if let Some(socket) = &self.socket {
+            socket.close().unwrap_throw();
+        }
+    }
+}
+
+impl NetHandler {
+    pub fn run(state: Arc<RwLock<NetGameState>>, game: GameID, player: PlayerID) -> NetHandler {
+        let is_localhost = {
+            let window = web_sys::window().unwrap_throw();
+            let location = window.location();
+            let hostname = location.hostname().unwrap_throw();
+            hostname == "127.0.0.1" || hostname == "localhost"
+        };
+        let addr = if is_localhost {
+            "ws://127.0.0.1:8080"
+        } else {
+            "ws://api.dynamaze.fun"
+        };
+        let socket = web_sys::WebSocket::new(addr).unwrap_throw();
+        socket.set_binary_type(web_sys::BinaryType::Arraybuffer);
+        let queue = {
+            let join = MetaMessage::Join(game);
+            let mut queue = VecDeque::new();
+            queue.push_back(join);
+            Arc::new(Mutex::new(queue))
+        };
+        let reply_queue = queue.clone();
+        let message_listener = EventListener::new(&socket, "message", move |event| {
+            let event = event
+                .dyn_ref::<web_sys::MessageEvent>()
+                .expect_throw("Bad message received");
+            let data = event.data();
+            let data = data
+                .dyn_ref::<js_sys::ArrayBuffer>()
+                .expect_throw("Bad message received");
+            let data = js_sys::Uint8Array::new(data);
+            let data = data.to_vec();
+            let message = deserialize(&data).expect_throw("Bad message received");
+            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
+                "Got message: {:?}",
+                message
+            )));
+            let reply = handle_incoming(message, state.clone(), player);
+            if let Some(reply) = reply {
+                reply_queue.lock().unwrap().push_back(reply.into());
+            }
+        });
+        NetHandler {
+            socket: Some(socket),
+            message_listener: Some(message_listener),
+            queue,
+        }
+    }
+
+    pub fn run_fake() -> NetHandler {
+        NetHandler {
+            socket: None,
+            message_listener: None,
+            queue: Default::default(),
+        }
+    }
+
+    pub fn queue(&self) -> Arc<Mutex<VecDeque<MetaMessage>>> {
+        self.queue.clone()
+    }
+
+    pub fn send<M: Into<MetaMessage>>(&self, message: M) {
+        self.queue.lock().unwrap().push_back(message.into());
+    }
+
+    pub fn drain_queue(&self) {
+        if let Some(socket) = &self.socket {
+            if socket.ready_state() != web_sys::WebSocket::OPEN {
+                return;
+            }
+            let mut queue = self.queue.lock().unwrap();
+            while let Some(message) = queue.pop_front() {
+                let mut data = serialize(&message).expect_throw("Bad message sent");
+                match socket.send_with_u8_array(&mut data) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        web_sys::console::error_1(&e);
+                    }
+                }
+            }
+        } else {
+            let mut queue = self.queue.lock().unwrap();
+            while let Some(_) = queue.pop_front() {}
+        }
+    }
 }

@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex, RwLock};
 
-use gloo::events::EventListener;
+use gloo::events::{EventListener, EventListenerOptions};
 use rand::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -12,7 +12,7 @@ use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
 use crate::anim;
 use crate::demo;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
-use crate::net::{self, Message, MessageCtrl};
+use crate::net::{self, Message};
 use crate::options;
 use crate::sound::{self, SoundEngine};
 use crate::tutorial;
@@ -69,28 +69,33 @@ impl GameController {
     }
 
     fn host(&mut self) {
-        let state = NetGameState::Lobby(LobbyInfo::new(self.player_id));
+        let game = random();
+        let state = NetGameState::Lobby(LobbyInfo::new(self.player_id, game));
         let state = Arc::new(RwLock::new(state));
-        let sender = net::run_dummy(state.clone());
-        anim::STATE.write().unwrap().set_send(sender.clone());
+        let sender = net::NetHandler::run(state.clone(), game, self.player_id);
+        anim::STATE.write().unwrap().set_send(sender.queue());
         let conn_state = ConnectedState { state, sender };
         self.state = GameState::InGame(conn_state);
     }
 
     fn connect(&mut self) {
-        self.state = GameState::ConnectMenu("127.0.0.1:12543".into());
+        self.state = GameState::ConnectMenu;
     }
 
     fn enter_options(&mut self) {
         self.state = GameState::Options(options::HANDLE.fetch().clone());
     }
 
-    fn do_connect(&mut self) {
-        if let GameState::ConnectMenu(ref _address) = self.state {
+    fn do_connect(&mut self, form: web_sys::HtmlFormElement) {
+        if let GameState::ConnectMenu = self.state {
+            let elements = form.elements();
+            let game = elements.item(0).unwrap_throw();
+            let game = game.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+            let game = game.value().parse().unwrap_throw();
             let state = NetGameState::Error("Connecting...".to_string());
             let state = Arc::new(RwLock::new(state));
-            let mut sender = net::run_dummy(state.clone());
-            anim::STATE.write().unwrap().set_send(sender.clone());
+            let mut sender = net::NetHandler::run(state.clone(), game, self.player_id);
+            anim::STATE.write().unwrap().set_send(sender.queue());
             let player = Player::new("Guesty McGuestface".into(), random(), self.player_id);
             NetGameState::join_lobby(&mut sender, player);
             let conn_state = ConnectedState { sender, state };
@@ -120,10 +125,7 @@ impl GameController {
                     self.broadcast_state();
                 } else {
                     let message = Message::EditPlayer(self.player_id, player.clone());
-                    sender
-                        .try_send(message.into())
-                        .map_err(|_| ())
-                        .expect("Failed to send message");
+                    sender.send(message);
                 }
             }
         }
@@ -143,10 +145,7 @@ impl GameController {
                     self.broadcast_state();
                 } else {
                     let message = Message::EditPlayer(self.player_id, player.clone());
-                    sender
-                        .try_send(message.into())
-                        .map_err(|_| ())
-                        .expect("Failed to send message");
+                    sender.send(message);
                 }
             }
         }
@@ -166,10 +165,7 @@ impl GameController {
                     drop(state);
                     self.broadcast_state();
                 } else {
-                    sender
-                        .try_send(Message::JoinLobby(child).into())
-                        .map_err(|_| ())
-                        .expect("Failed to pass message")
+                    sender.send(Message::JoinLobby(child));
                 }
             }
         }
@@ -200,14 +196,6 @@ impl GameController {
     }
 
     fn main_menu(&mut self) {
-        if let GameState::InGame(ref mut conn_state) = self.state {
-            let sender = &mut conn_state.sender;
-            sender
-                .try_send(MessageCtrl::Disconnect)
-                .map_err(|e| println!("{:?}", e))
-                .unwrap_or(());
-            println!("Attempted to disconnect");
-        }
         self.sound_engine.fetch_volume();
         self.state = GameState::MainMenu;
     }
@@ -220,7 +208,7 @@ impl GameController {
 
         let music = match self.state {
             GameState::MainMenu
-            | GameState::ConnectMenu(_)
+            | GameState::ConnectMenu
             | GameState::HardError(_)
             | GameState::Options(_) => {
                 self.last_player = None;
@@ -253,6 +241,10 @@ impl GameController {
         };
         if let Some(action) = action {
             action(self);
+        }
+
+        if let GameState::InGame(ref state) = self.state {
+            state.sender.drain_queue();
         }
     }
 
@@ -393,23 +385,19 @@ impl GameController {
 
     fn broadcast_state(&mut self) {
         if let GameState::InGame(ref mut _conn_state) = self.state {
-            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("not broadcasting"));
-            return;
+            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("broadcasting"));
             let sender = &mut _conn_state.sender;
             let state = &mut _conn_state.state;
             let state = state.read().expect("Failed to lock state");
             let message = Message::State(state.clone());
-            sender
-                .try_send(message.into())
-                .map_err(|_| ())
-                .expect("Failed to send message");
+            sender.send(message);
         }
     }
 
     fn curr_class(&self) -> &'static str {
         match self.state {
             GameState::MainMenu => "main-menu",
-            GameState::ConnectMenu(_) => "connect-menu",
+            GameState::ConnectMenu => "connect-menu",
             GameState::InGame(ref conn_state) => {
                 let state = &conn_state.state;
                 let state = state.read().expect("Failed to lock state");
@@ -429,14 +417,22 @@ impl GameController {
         let old_class = main.class_name();
         let curr_class = self.curr_class();
 
-        // deferring actions is now more complicated
-        macro_rules! defer {
-            (self.$e:ident($( $a:expr ),*)) => {{
+        // deferring is complicated, preventing default is complicated
+        macro_rules! listen {
+            ($target:expr, $evt:expr, self.$e:ident($( $a:expr ),*)) => {{
+                let options = EventListenerOptions::enable_prevent_default();
                 let actions = self.actions.clone();
-                move |_| {
-                    let mut actions = actions.lock().unwrap_throw();
-                    actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)))
-                }
+                EventListener::once_with_options(
+                    $target,
+                    $evt,
+                    options,
+                    move |event| {
+                        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("handling an event"));
+                        event.prevent_default();
+                        let mut actions = actions.lock().unwrap_throw();
+                        actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)));
+                    }
+                ).forget();
             }}
         }
 
@@ -468,27 +464,27 @@ impl GameController {
                 let tutorial = tutorial.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 tutorial.set_inner_text("Tutorial");
                 main.append_with_node_1(&tutorial).unwrap_throw();
-                EventListener::once(&tutorial, "click", defer!(self.tutorial())).forget();
+                listen!(&tutorial, "click", self.tutorial());
 
                 let host = document.create_element("button").unwrap_throw();
                 let host = host.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 host.set_inner_text("Host Game");
                 main.append_with_node_1(&host).unwrap_throw();
-                EventListener::once(&host, "click", defer!(self.host())).forget();
+                listen!(&host, "click", self.host());
 
                 let connect = document.create_element("button").unwrap_throw();
                 let connect = connect.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 connect.set_inner_text("Join Game");
                 main.append_with_node_1(&connect).unwrap_throw();
-                EventListener::once(&connect, "click", defer!(self.connect())).forget();
+                listen!(&connect, "click", self.connect());
 
                 let options = document.create_element("button").unwrap_throw();
                 let options = options.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 options.set_inner_text("Options");
                 main.append_with_node_1(&options).unwrap_throw();
-                EventListener::once(&options, "click", defer!(self.enter_options())).forget();
+                listen!(&options, "click", self.enter_options());
             }
-            GameState::ConnectMenu(ref mut _connect_addr) => {
+            GameState::ConnectMenu => {
                 let header = document.create_element("h1").unwrap_throw();
                 let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 header.set_inner_text("Connect to Game");
@@ -498,20 +494,29 @@ impl GameController {
                 let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 main_menu.set_inner_text("Main Menu");
                 main.append_with_node_1(&main_menu).unwrap_throw();
-                EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
+                listen!(&main_menu, "click", self.main_menu());
+
+                let connect_form = document.create_element("form").unwrap_throw();
+                let connect_form = connect_form
+                    .dyn_ref::<web_sys::HtmlFormElement>()
+                    .unwrap_throw();
+                main.append_with_node_1(&connect_form).unwrap_throw();
 
                 let connect_text = document.create_element("input").unwrap_throw();
                 let connect_text = connect_text
                     .dyn_ref::<web_sys::HtmlElement>()
                     .unwrap_throw();
-                main.append_with_node_1(&connect_text).unwrap_throw();
-                // TODO handle Enter, probably with a form
+                connect_form
+                    .append_with_node_1(&connect_text)
+                    .unwrap_throw();
 
                 let connect = document.create_element("button").unwrap_throw();
                 let connect = connect.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 connect.set_inner_text("Connect");
-                main.append_with_node_1(&connect).unwrap_throw();
-                EventListener::once(&connect, "click", defer!(self.do_connect())).forget();
+                connect_form.append_with_node_1(&connect).unwrap_throw();
+
+                let connect_form2 = connect_form.clone();
+                listen!(&connect_form, "submit", self.do_connect(connect_form2));
             }
             GameState::InGame(ref conn_state) => {
                 let state = &conn_state.state;
@@ -520,19 +525,8 @@ impl GameController {
                 match *state {
                     NetGameState::Lobby(ref info) => {
                         let status = if is_host {
-                            let local_piece = match info.local_addr {
-                                Ok(ref addr) => format!("Local: {}", addr),
-                                Err(ref err) => format!(
-                                    "Local on port {} - error: {}",
-                                    crate::net::LOCAL_PORT,
-                                    err
-                                ),
-                            };
-                            let remote_piece = match info.remote_addr {
-                                Ok(ref addr) => format!("Remote: {}", addr),
-                                Err(ref err) => format!("Auto port forwarding failed: {}", err),
-                            };
-                            format!("Hosting lobby\n{}\n{}", local_piece, remote_piece)
+                            let game_id = info.id;
+                            format!("Hosting lobby\n{}", game_id)
                         } else {
                             "Connected to lobby".into()
                         };
@@ -545,7 +539,7 @@ impl GameController {
                         let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         main_menu.set_inner_text("Main Menu");
                         main.append_with_node_1(&main_menu).unwrap_throw();
-                        EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
+                        listen!(&main_menu, "click", self.main_menu());
 
                         let me = info.player(&self.player_id);
 
@@ -566,8 +560,7 @@ impl GameController {
                             let start = start.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                             start.set_inner_text("Begin Game");
                             main.append_with_node_1(&start).unwrap_throw();
-                            EventListener::once(&start, "click", defer!(self.start_hosted_game()))
-                                .forget();
+                            listen!(&start, "click", self.start_hosted_game());
                         }
                     }
                     NetGameState::Active(_) => {
@@ -590,7 +583,7 @@ impl GameController {
                         let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         main_menu.set_inner_text("Main Menu");
                         main.append_with_node_1(&main_menu).unwrap_throw();
-                        EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
+                        listen!(&main_menu, "click", self.main_menu());
                     }
                     NetGameState::Error(ref text) => {
                         let header = document.create_element("h1").unwrap_throw();
@@ -607,7 +600,7 @@ impl GameController {
                         let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                         main_menu.set_inner_text("Main Menu");
                         main.append_with_node_1(&main_menu).unwrap_throw();
-                        EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
+                        listen!(&main_menu, "click", self.main_menu());
                     }
                 }
             }
@@ -626,7 +619,7 @@ impl GameController {
                 let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 main_menu.set_inner_text("Main Menu");
                 main.append_with_node_1(&main_menu).unwrap_throw();
-                EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
+                listen!(&main_menu, "click", self.main_menu());
             }
             GameState::Options(ref mut _curr_options) => {
                 let header = document.create_element("h1").unwrap_throw();
@@ -642,13 +635,13 @@ impl GameController {
                 let save_button = save_button.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 save_button.set_inner_text("Save");
                 main.append_with_node_1(&save_button).unwrap_throw();
-                EventListener::once(&save_button, "click", defer!(self.save_options())).forget();
+                listen!(&save_button, "click", self.save_options());
 
                 let main_menu = document.create_element("button").unwrap_throw();
                 let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 main_menu.set_inner_text("Main Menu");
                 main.append_with_node_1(&main_menu).unwrap_throw();
-                EventListener::once(&main_menu, "click", defer!(self.main_menu())).forget();
+                listen!(&main_menu, "click", self.main_menu());
             }
         }
     }

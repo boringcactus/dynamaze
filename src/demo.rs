@@ -52,7 +52,7 @@ pub fn new_controller() -> GameController {
     let board = BoardController::new(settings, players, player_id);
     let state = NetGameState::Active(board);
     let state = Arc::new(RwLock::new(state));
-    let sender = net::run_dummy(state.clone());
+    let sender = net::NetHandler::run_fake();
     let state = ConnectedState { sender, state };
     let state = GameState::InGame(state);
     GameController {

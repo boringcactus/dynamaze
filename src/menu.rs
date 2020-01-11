@@ -1,14 +1,12 @@
 //! Game menu logic
 
-use std::net::SocketAddrV4;
 use std::sync::{Arc, RwLock};
 
-use futures::channel::mpsc;
 use serde::{Deserialize, Serialize};
 
 use crate::{BoardController, Player, PlayerID};
 use crate::colors::Color;
-use crate::net::{Message, MessageCtrl};
+use crate::net::{GameID, Message, NetHandler};
 use crate::options::GameOptions;
 
 /// Lobby information
@@ -18,20 +16,17 @@ pub struct LobbyInfo {
     pub host: Player,
     /// Currently connected players, not including host
     pub guests: Vec<Player>,
-    /// Local socket, theoretically usable on LAN, may be Err("Loading...") if loading
-    pub local_addr: Result<SocketAddrV4, String>,
-    /// Remote socket, theoretically usable across Internet, may be Err("Loading...") if loading
-    pub remote_addr: Result<SocketAddrV4, String>,
+    /// Game ID
+    pub id: GameID,
 }
 
 impl LobbyInfo {
     /// Creates a new lobby
-    pub fn new(player_id: PlayerID) -> LobbyInfo {
+    pub fn new(player_id: PlayerID, id: GameID) -> LobbyInfo {
         LobbyInfo {
             host: Player::new("Host McHostface".into(), Color(0.7, 0.2, 0.7), player_id),
             guests: vec![],
-            local_addr: Err("Loading...".into()),
-            remote_addr: Err("Loading...".into()),
+            id,
         }
     }
 
@@ -112,19 +107,16 @@ impl NetGameState {
 }
 
 impl NetGameState {
-    /// Connects to a lobby running on the given address as the given player
-    pub fn join_lobby(socket: &mut mpsc::Sender<MessageCtrl>, player: Player) {
-        socket
-            .try_send(Message::JoinLobby(player).into())
-            .map_err(|_| ())
-            .expect("Failed to pass message")
+    /// Sends player information to the given lobby
+    pub fn join_lobby(handler: &mut NetHandler, player: Player) {
+        handler.send(Message::JoinLobby(player));
     }
 }
 
 /// State of a connected game
 pub struct ConnectedState {
     /// Message passing mechanism
-    pub sender: mpsc::Sender<MessageCtrl>,
+    pub sender: NetHandler,
     /// Game state
     pub state: Arc<RwLock<NetGameState>>,
 }
@@ -132,8 +124,8 @@ pub struct ConnectedState {
 pub enum GameState {
     /// Main menu
     MainMenu,
-    /// Joining, with given host:port
-    ConnectMenu(String),
+    /// Joining
+    ConnectMenu,
     /// Connected, with given connection info and state
     InGame(ConnectedState),
     /// Errored out in a serious way

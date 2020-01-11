@@ -28,7 +28,7 @@ impl GameView {
         ctx.restore();
         match controller.state {
             GameState::MainMenu => {}
-            GameState::ConnectMenu(_) => {}
+            GameState::ConnectMenu => {}
             GameState::InGame(ref conn_state) => {
                 let state = &conn_state.state;
                 let state = state.read().expect("Failed to acquire state mutex");

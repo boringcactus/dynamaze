@@ -31,6 +31,7 @@ mod demo;
 mod menu;
 mod menu_controller;
 mod menu_view;
+mod meta_net;
 mod net;
 mod options;
 mod player;

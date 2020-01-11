@@ -24,7 +24,7 @@ pub fn new_conn_state(player_id: PlayerID) -> ConnectedState {
     TutorialStep::First.apply(&mut board.board);
     let state = NetGameState::Active(board);
     let state = Arc::new(RwLock::new(state));
-    let sender = net::run_dummy(state.clone());
+    let sender = net::NetHandler::run_fake();
     ConnectedState { sender, state }
 }
 
