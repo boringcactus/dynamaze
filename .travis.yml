@@ -9,6 +9,7 @@ filter_secrets: false
 os:
   - windows
 before_install:
+  - rustup default $TRAVIS_RUST_VERSION-msvc
   - rustup component add clippy
   - cargo install --git https://github.com/boringcactus/wasm-pack.git --force
 script:
