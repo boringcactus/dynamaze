@@ -79,7 +79,7 @@ impl BoardController {
     pub fn effective_local_id(&self, local_id: PlayerID) -> PlayerID {
         for id in &self.turn_order {
             let player = &self.players[id];
-            if player.id == local_id || player.parent == Some(local_id) {
+            if player.lives_with(local_id) {
                 return player.id;
             }
         }
@@ -115,9 +115,7 @@ impl BoardController {
     /// Checks if the player whose turn it is lives with this player (equal to or child of)
     pub fn local_turn(&self, local_id: PlayerID) -> bool {
         let active_player = self.active_player();
-        let my_turn = active_player.id == local_id;
-        let child_turn = active_player.parent == Some(local_id);
-        my_turn || child_turn
+        active_player.lives_with(local_id)
     }
 
     /// Handles click event, returns whether or not the state may have changed

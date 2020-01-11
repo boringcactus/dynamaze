@@ -51,11 +51,8 @@ fn handle_incoming(
         }
         Message::EditPlayer(id, player) => {
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
-                lobby_info
-                    .guests
-                    .iter_mut()
-                    .filter(|p| p.id == id)
-                    .for_each(|p| *p = player.clone());
+                let p = lobby_info.player_mut(&id);
+                *p = player;
             }
         }
         Message::State(new_state) => {

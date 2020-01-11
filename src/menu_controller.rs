@@ -43,6 +43,8 @@ pub struct GameController {
     pub sound_engine: SoundEngine,
     /// Action queue
     pub actions: Arc<Mutex<Vec<DeferredAction>>>,
+    /// DOM event listeners
+    pub listeners: Vec<EventListener>,
 }
 
 impl GameController {
@@ -61,6 +63,7 @@ impl GameController {
             view: GameView::new(),
             sound_engine,
             actions: Default::default(),
+            listeners: vec![],
         }
     }
 
@@ -131,22 +134,17 @@ impl GameController {
         }
     }
 
-    fn set_own_name(&mut self, new_name: &str) {
+    fn set_name(&mut self, name_field: web_sys::HtmlInputElement, id: PlayerID) {
         if let GameState::InGame(ref mut conn_state) = self.state {
             let sender = &mut conn_state.sender;
             let state = &mut conn_state.state;
             let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(self.player_id);
             if let NetGameState::Lobby(ref mut info) = *state {
-                let player = info.player_mut(&self.player_id);
-                player.name = new_name.to_string();
-                if is_host {
-                    drop(state);
-                    self.broadcast_state();
-                } else {
-                    let message = Message::EditPlayer(self.player_id, player.clone());
-                    sender.send(message);
-                }
+                let player = info.player_mut(&id);
+                let new_name = name_field.value();
+                player.name = new_name;
+                let message = Message::EditPlayer(id, player.clone());
+                sender.send(message);
             }
         }
     }
@@ -419,39 +417,96 @@ impl GameController {
 
         // deferring is complicated, preventing default is complicated
         macro_rules! listen {
-            ($target:expr, $evt:expr, self.$e:ident($( $a:expr ),*)) => {{
+            ($target:expr, $evt:expr, self.$e:ident($( $a:ident ),*)) => {{
+                let target = $target;
+                $(let $a = $a.clone();)*
                 let options = EventListenerOptions::enable_prevent_default();
                 let actions = self.actions.clone();
-                EventListener::once_with_options(
-                    $target,
+                let listener = EventListener::new_with_options(
+                    target,
                     $evt,
                     options,
                     move |event| {
+                        $(let $a = $a.clone();)*
                         web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("handling an event"));
                         event.prevent_default();
                         let mut actions = actions.lock().unwrap_throw();
                         actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)));
                     }
-                ).forget();
+                );
+                self.listeners.push(listener);
             }}
         }
 
-        // if the UI doesn't need to be rebuilt from scratch, don't do anything
+        // get ready to make some elements
+        let document = main.owner_document().unwrap_throw();
+
+        // if the UI doesn't need to be rebuilt from scratch...
         if old_class == curr_class {
+            // apply updates incrementally
+            if let GameState::InGame(ref conn_state) = self.state {
+                let state = &conn_state.state;
+                let state = state.read().expect("Failed to lock state");
+                match *state {
+                    NetGameState::Lobby(ref info) => {
+                        let players = main.query_selector("ul").unwrap_throw().unwrap_throw();
+                        for player_info in info.players_ref() {
+                            let is_local = player_info.lives_with(self.player_id);
+                            let existing_player = players.query_selector(&format!("#player-{}", player_info.id))
+                                .map_err(|e| web_sys::console::error_1(&e)).ok().flatten();
+                            match existing_player {
+                                Some(player) => {
+                                    if !is_local {
+                                        let player = player.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                        if player.inner_text() != player_info.name {
+                                            player.set_inner_text(&player_info.name);
+                                        }
+                                    }
+                                }
+                                None => {
+                                    let player = document.create_element("li").unwrap_throw();
+                                    player.set_id(&format!("player-{}", player_info.id));
+                                    if is_local {
+                                        let name_box = document.create_element("input").unwrap_throw();
+                                        let name_box = name_box.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+                                        name_box.set_attribute("value", &player_info.name).unwrap_throw();
+                                        player.append_with_node_1(&name_box).unwrap_throw();
+                                        let id = player_info.id;
+                                        listen!(&name_box, "input", self.set_name(name_box, id));
+                                        player.append_with_node_1(&name_box).unwrap_throw();
+                                    } else {
+                                        let name = document.create_text_node(&player_info.name);
+                                        player.append_with_node_1(&name).unwrap_throw();
+                                    }
+                                    players.append_with_node_1(&player).unwrap_throw();
+                                }
+                            }
+                        }
+                    }
+                    NetGameState::Active(_) => {
+                        let canvas = main.query_selector("canvas").unwrap_throw().unwrap_throw();
+                        let canvas = canvas
+                            .dyn_ref::<web_sys::HtmlCanvasElement>()
+                            .unwrap_throw();
+                        let window = web_sys::window().unwrap_throw();
+                        let inner_width = window.inner_width().unwrap_throw().as_f64().unwrap_throw() as u32;
+                        let inner_height = window.inner_height().unwrap_throw().as_f64().unwrap_throw() as u32;
+                        canvas.set_width(inner_width);
+                        canvas.set_height(inner_height);
+                    }
+                    _ => {}
+                }
+            }
             return;
         }
         // if there's a wrong UI already...
         if old_class != "" {
             // nuke everything from orbit
             main.set_inner_html("");
+            self.listeners = vec![];
         }
         // give it the right class
         main.set_class_name(curr_class);
-
-        // get ready to make some elements
-        let document = main.owner_document().unwrap_throw();
-
-        // TODO don't leak all the event listeners
 
         match self.state {
             GameState::MainMenu => {
@@ -515,8 +570,7 @@ impl GameController {
                 connect.set_inner_text("Connect");
                 connect_form.append_with_node_1(&connect).unwrap_throw();
 
-                let connect_form2 = connect_form.clone();
-                listen!(&connect_form, "submit", self.do_connect(connect_form2));
+                listen!(&connect_form, "submit", self.do_connect(connect_form));
             }
             GameState::InGame(ref conn_state) => {
                 let state = &conn_state.state;
@@ -541,19 +595,37 @@ impl GameController {
                         main.append_with_node_1(&main_menu).unwrap_throw();
                         listen!(&main_menu, "click", self.main_menu());
 
-                        let me = info.player(&self.player_id);
+                        let players = document.create_element("ul").unwrap_throw();
+                        main.append_with_node_1(&players).unwrap_throw();
 
-                        let name_box = document.create_element("input").unwrap_throw();
-                        let name_box = name_box.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        name_box.set_attribute("value", &me.name).unwrap_throw();
-                        main.append_with_node_1(&name_box).unwrap_throw();
-                        // TODO catch changes with self.set_own_name()
+                        for player_info in info.players_ref() {
+                            let player = document.create_element("li").unwrap_throw();
+                            player.set_id(&format!("player-{}", player_info.id));
+                            let is_local = player_info.lives_with(self.player_id);
+                            if is_local {
+                                let name_box = document.create_element("input").unwrap_throw();
+                                let name_box = name_box.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+                                name_box.set_attribute("value", &player_info.name).unwrap_throw();
+                                player.append_with_node_1(&name_box).unwrap_throw();
+                                let id = player_info.id;
+                                listen!(&name_box, "input", self.set_name(name_box, id));
+                                player.append_with_node_1(&name_box).unwrap_throw();
+                            } else {
+                                let name = document.create_text_node(&player_info.name);
+                                player.append_with_node_1(&name).unwrap_throw();
+                            }
+                            players.append_with_node_1(&player).unwrap_throw();
+                        }
 
-                        // TODO circle with color me.color
+                        // TODO circles
 
                         // TODO randomize color with self.randomize_color()
 
-                        // TODO add local player with self.new_local_player()
+                        let new_local = document.create_element("button").unwrap_throw();
+                        let new_local = new_local.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                        new_local.set_inner_text("New Local Player");
+                        main.append_with_node_1(&new_local).unwrap_throw();
+                        listen!(&new_local, "click", self.new_local_player());
 
                         if is_host {
                             let start = document.create_element("button").unwrap_throw();
@@ -568,8 +640,6 @@ impl GameController {
                         let canvas = canvas
                             .dyn_ref::<web_sys::HtmlCanvasElement>()
                             .unwrap_throw();
-                        canvas.set_width(1000);
-                        canvas.set_height(800);
                         main.append_with_node_1(&canvas).unwrap_throw();
                     }
                     NetGameState::GameOver(ref info) => {

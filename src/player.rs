@@ -40,4 +40,9 @@ impl Player {
             parent: Some(parent),
         }
     }
+
+    /// Checks if the given player has, or has a parent with, the given ID
+    pub fn lives_with(&self, target: PlayerID) -> bool {
+        self.id == target || self.parent == Some(target)
+    }
 }
