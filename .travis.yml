@@ -13,8 +13,8 @@ before_install:
   - rustup component add clippy
   - cargo install --git https://github.com/boringcactus/wasm-pack.git --force
 script:
-  - cargo clippy --workspace
-  - wasm-pack build --target no-modules
+  - cargo clippy
+  - wasm-pack build --target no-modules -- --package dynamaze
 deploy:
   skip_cleanup: true
   provider: script

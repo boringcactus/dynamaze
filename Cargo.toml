@@ -6,6 +6,7 @@ edition = "2018"
 
 [workspace]
 members = ["server"]
+default-members = ["server"]
 
 [dependencies]
 rand = { version = "0.7.2", features = ["wasm-bindgen"] }
