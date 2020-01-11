@@ -350,7 +350,7 @@ async fn main() -> std::io::Result<()> {
     // Start chat server actor
     let server = GameServer::default().start();
 
-    let addr = ("0.0.0.0", std::env::var("PORT").map(|x| x.as_str()).unwrap_or("8080").parse().unwrap());
+    let addr = ("0.0.0.0", std::env::var("PORT").unwrap_or_else(|_| "8080".to_string()).parse().unwrap());
 
     println!("Listening on {}:{}", addr.0, addr.1);
 
