@@ -1,0 +1,14 @@
+[package]
+name = "dynamaze-server"
+version = "0.1.0"
+authors = ["Melody Horn <melody@boringcactus.com>"]
+edition = "2018"
+
+[dependencies]
+actix = "0.9.0"
+actix-rt = "1.0.0"
+actix-web = "2.0.0"
+actix-web-actors = "2.0.0"
+rand = "0.7.3"
+serde = { version = "1.0.103", features = ["derive"] }
+bincode = "1.2.1"

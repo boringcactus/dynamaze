@@ -11,7 +11,7 @@ use meta_net::*;
 
 type ClientID = usize;
 
-#[path = "../meta_net.rs"]
+#[path = "../../src/meta_net.rs"]
 mod meta_net;
 
 #[derive(Message)]
@@ -72,12 +72,12 @@ impl Default for GameServer {
 
 impl GameServer {
     /// Send message to all users in the game
-    fn send_message(&self, game: GameID, message: &Vec<u8>, skip_id: ClientID) {
+    fn send_message(&self, game: GameID, message: &[u8], skip_id: ClientID) {
         if let Some(sessions) = self.games.get(&game) {
             for id in sessions {
                 if *id != skip_id {
                     if let Some(addr) = self.sessions.get(id) {
-                        let _ = addr.do_send(Message(message.clone()));
+                        let _ = addr.do_send(Message(message.to_vec()));
                     }
                 }
             }
@@ -119,7 +119,7 @@ impl Handler<Disconnect> for GameServer {
         // remove address
         if self.sessions.remove(&msg.id).is_some() {
             // remove session from all games
-            for (_, sessions) in &mut self.games {
+            for sessions in self.games.values_mut() {
                 sessions.remove(&msg.id);
             }
         }
@@ -144,7 +144,7 @@ impl Handler<Join> for GameServer {
         let Join { id, game_id } = msg;
 
         // remove session from all games
-        for (_, sessions) in &mut self.games {
+        for sessions in self.games.values_mut() {
             sessions.remove(&id);
         }
 
@@ -163,7 +163,7 @@ impl Handler<Leave> for GameServer {
         println!("Someone left");
 
         // remove session from all games
-        for (_, sessions) in &mut self.games {
+        for sessions in self.games.values_mut() {
             sessions.remove(&msg.id);
         }
     }
