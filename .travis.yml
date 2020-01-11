@@ -7,12 +7,11 @@ cache:
   timeout: 1000
 filter_secrets: false
 os:
-  - linux
+  - windows
 before_install:
   - rustup component add clippy
   - cargo install --git https://github.com/boringcactus/wasm-pack.git --force
 script:
-  - cargo test
   - cargo clippy
   - wasm-pack build --target no-modules
 deploy:
