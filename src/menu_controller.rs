@@ -107,31 +107,27 @@ impl GameController {
         }
     }
 
+    fn set_music_level(&mut self, slider: web_sys::HtmlInputElement) {
+        if let GameState::Options(ref mut opts) = self.state {
+            let val = slider.value();
+            opts.music_level = val.parse().unwrap_throw();
+            self.sound_engine.poke_options(opts);
+        }
+    }
+
+    fn set_sound_level(&mut self, slider: web_sys::HtmlInputElement) {
+        if let GameState::Options(ref mut opts) = self.state {
+            let val = slider.value();
+            opts.sound_level = val.parse().unwrap_throw();
+            self.sound_engine.poke_options(opts);
+        }
+    }
+
     fn save_options(&mut self) {
         if let GameState::Options(ref opts) = self.state {
             options::HANDLE.save(opts);
             self.state = GameState::MainMenu;
             self.sound_engine.fetch_volume();
-        }
-    }
-
-    fn randomize_color(&mut self) {
-        if let GameState::InGame(ref mut conn_state) = self.state {
-            let sender = &mut conn_state.sender;
-            let state = &mut conn_state.state;
-            let mut state = state.write().expect("Failed to lock state");
-            let is_host = state.is_host(self.player_id);
-            if let NetGameState::Lobby(ref mut info) = *state {
-                let player = info.player_mut(&self.player_id);
-                player.color = random();
-                if is_host {
-                    drop(state);
-                    self.broadcast_state();
-                } else {
-                    let message = Message::EditPlayer(self.player_id, player.clone());
-                    sender.send(message);
-                }
-            }
         }
     }
 
@@ -742,15 +738,33 @@ impl GameController {
                 main.append_with_node_1(&main_menu).unwrap_throw();
                 listen!(&main_menu, "click", self.main_menu());
             }
-            GameState::Options(ref mut _curr_options) => {
+            GameState::Options(ref curr_options) => {
                 let header = document.create_element("h1").unwrap_throw();
                 let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
                 header.set_inner_text("Options");
                 main.append_with_node_1(&header).unwrap_throw();
 
-                // TODO slider for music level with poke_options
+                let music = document.create_element("label").unwrap_throw();
+                let music_label = document.create_text_node("Music Level");
+                music.append_with_node_1(&music_label).unwrap_throw();
+                let music_slider = document.create_element("input").unwrap_throw();
+                let music_slider = music_slider.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+                music_slider.set_type("range");
+                music_slider.set_value(&format!("{}", curr_options.music_level));
+                listen!(&music_slider, "input", self.set_music_level(music_slider));
+                music.append_with_node_1(&music_slider).unwrap_throw();
+                main.append_with_node_1(&music).unwrap_throw();
 
-                // TODO slider for sound level with poke_options
+                let sound = document.create_element("label").unwrap_throw();
+                let sound_label = document.create_text_node("Sound Level");
+                sound.append_with_node_1(&sound_label).unwrap_throw();
+                let sound_slider = document.create_element("input").unwrap_throw();
+                let sound_slider = sound_slider.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+                sound_slider.set_type("range");
+                sound_slider.set_value(&format!("{}", curr_options.sound_level));
+                listen!(&sound_slider, "input", self.set_sound_level(sound_slider));
+                sound.append_with_node_1(&sound_slider).unwrap_throw();
+                main.append_with_node_1(&sound).unwrap_throw();
 
                 let save_button = document.create_element("button").unwrap_throw();
                 let save_button = save_button.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
