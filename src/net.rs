@@ -113,10 +113,6 @@ impl NetHandler {
             let data = js_sys::Uint8Array::new(data);
             let data = data.to_vec();
             let message = deserialize(&data).expect_throw("Bad message received");
-            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
-                "Got message: {:?}",
-                message
-            )));
             let reply = handle_incoming(message, state.clone(), player);
             if let Some(reply) = reply {
                 reply_queue.lock().unwrap().push_back(reply.into());

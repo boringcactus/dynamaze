@@ -41,7 +41,6 @@ mod tutorial;
 
 fn main() {
     console_error_panic_hook::set_once();
-    web_sys::console::log_1(&JsValue::from_str("started main"));
     let window = web_sys::window().expect("no window");
     let main = {
         let document = window.document().expect_throw("no document");
@@ -51,9 +50,7 @@ fn main() {
             .expect_throw("failed to find main")
     };
 
-    web_sys::console::log_1(&JsValue::from_str("started controller new"));
     let game_controller = GameController::new();
-    web_sys::console::log_1(&JsValue::from_str("finished controller new"));
     let game_controller = Arc::new(Mutex::new(game_controller));
 
     {

@@ -267,7 +267,7 @@ impl GameController {
 
     /// Handles click event
     pub fn on_click(&mut self, event: &web_sys::MouseEvent, main: &web_sys::Element) {
-        web_sys::console::log_1(&JsValue::from_str("clicking in menu"));
+        self.sound_engine.unpause();
         if let GameState::InGame(ref mut conn_state) = self.state {
             let state = &mut conn_state.state;
             let (broadcast, new_state, new_net_state) = {
@@ -279,7 +279,6 @@ impl GameController {
                         &self.view.board_view,
                         &get_context(main).unwrap_throw(),
                     );
-                    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("clicked in board"));
                     if state_dirty {
                         event.prevent_default();
                         if let Some(winner) = board_controller.winner() {
@@ -402,7 +401,6 @@ impl GameController {
 
     fn broadcast_state(&mut self) {
         if let GameState::InGame(ref mut _conn_state) = self.state {
-            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("broadcasting"));
             let sender = &mut _conn_state.sender;
             let state = &mut _conn_state.state;
             let state = state.read().expect("Failed to lock state");
@@ -447,7 +445,6 @@ impl GameController {
                     options,
                     move |event| {
                         $(let $a = $a.clone();)*
-                        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("handling an event"));
                         event.prevent_default();
                         let mut actions = actions.lock().unwrap_throw();
                         actions.push(Box::new(move |x: &mut Self| x.$e($($a),*)));

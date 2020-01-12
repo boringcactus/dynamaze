@@ -15,6 +15,14 @@ pub enum Music {
     InGame,
 }
 
+fn calc_gain(global_scale: f32, options_level: u8) -> f32 {
+    global_scale * (f32::from(options_level)) / 100.0
+}
+
+fn ramp_gain(gain: web_sys::AudioParam, value: f32) {
+    gain.exponential_ramp_to_value_at_time(value, 0.01);
+}
+
 impl Music {
     fn load(self) -> HtmlAudioElement {
         let path = match self {
@@ -55,25 +63,21 @@ pub struct SoundEngine {
 impl SoundEngine {
     pub fn new() -> SoundEngine {
         let context = AudioContext::new().unwrap_throw();
-        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("started sound engine"));
         let music_gain = context
             .create_gain()
             .expect_throw("Failed to create music gain node");
-        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("yeet sound engine"));
         music_gain
             .gain()
-            .set_value(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().music_level)) / 100.0);
-        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("swag sound engine"));
+            .set_value(calc_gain(MUSIC_VOLUME, options::HANDLE.fetch().music_level));
         music_gain
             .connect_with_audio_node(&context.destination())
             .unwrap_throw();
-        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("made sound engine"));
         let sound_gain = context
             .create_gain()
             .expect_throw("Failed to create sound  gain node");
         sound_gain
             .gain()
-            .set_value(SOUND_VOLUME * (f32::from(options::HANDLE.fetch().sound_level)) / 100.0);
+            .set_value(calc_gain(SOUND_VOLUME, options::HANDLE.fetch().sound_level));
         sound_gain
             .connect_with_audio_node(&context.destination())
             .unwrap_throw();
@@ -87,16 +91,25 @@ impl SoundEngine {
         }
     }
 
-    pub fn play_music(&self, music: Music) {
-        {
-            let current_music = self.current_music.lock().unwrap();
-            if *current_music == Some(music) {
-                return;
+    pub fn unpause(&self) {
+        if let web_sys::AudioContextState::Suspended = self.context.state() {
+            let _ = self.context.resume();
+            let music = {
+                let mut current_music = self.current_music.lock().unwrap();
+                current_music.take()
+            };
+            if let Some(music) = music {
+                self.play_music(music);
             }
         }
-        let _ = self.context.resume();
-        let mut music_sources = self.music_sources.lock().unwrap();
+    }
+
+    pub fn play_music(&self, music: Music) {
         let mut current_music = self.current_music.lock().unwrap();
+        if *current_music == Some(music) {
+            return;
+        }
+        let mut music_sources = self.music_sources.lock().unwrap();
         if let Some(ref old_music) = *current_music {
             if let Some(old_source) = music_sources.get(old_music) {
                 old_source.pause();
@@ -135,21 +148,12 @@ impl SoundEngine {
     }
 
     pub fn fetch_volume(&self) {
-        self.music_gain
-            .gain()
-            .set_value(MUSIC_VOLUME * (f32::from(options::HANDLE.fetch().music_level)) / 100.0);
-        self.sound_gain
-            .gain()
-            .set_value(SOUND_VOLUME * (f32::from(options::HANDLE.fetch().sound_level)) / 100.0);
+        self.poke_options(&*options::HANDLE.fetch());
     }
 
     pub fn poke_options(&self, new_options: &options::GameOptions) {
-        self.music_gain
-            .gain()
-            .set_value(MUSIC_VOLUME * (f32::from(new_options.music_level)) / 100.0);
-        self.sound_gain
-            .gain()
-            .set_value(SOUND_VOLUME * (f32::from(new_options.sound_level)) / 100.0);
+        ramp_gain(self.music_gain.gain(), calc_gain(MUSIC_VOLUME, new_options.music_level));
+        ramp_gain(self.sound_gain.gain(), calc_gain(SOUND_VOLUME, new_options.sound_level));
     }
 }
 

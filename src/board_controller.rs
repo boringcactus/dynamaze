@@ -126,7 +126,6 @@ impl BoardController {
         view: &BoardView,
         ctx: &Context,
     ) -> bool {
-        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("clicking in board"));
         // never do anything if this player is not the active player
         if !self.local_turn(local_id) {
             return false;

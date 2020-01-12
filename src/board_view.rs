@@ -806,7 +806,7 @@ impl BoardView {
             ctx.set_fill_style(&self.settings.text_color.into());
             ctx.set_font("20px sans-serif");
             let text = format!("It is {}'s turn", whose_turn.name);
-            let x = south_panel.west + cell_size * 1.5;
+            let x = south_panel.west;
             let y = south_panel.north + 20.0;
             ctx.fill_text(&text, x, y).unwrap_throw();
             if my_turn {
@@ -814,7 +814,7 @@ impl BoardView {
                     TurnState::InsertTile => {
                         "Right-click at a triangle to rotate, left-click to insert"
                     }
-                    TurnState::MoveToken => "Click on a reachable tile, or yourself to not move",
+                    TurnState::MoveToken => "Click on any reachable tile, or yourself to not move",
                 };
                 let y = y + 30.0;
                 ctx.fill_text(&text, x, y).unwrap_throw();
