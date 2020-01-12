@@ -54,4 +54,5 @@ features = [
     "HtmlCollection",
     "HtmlInputElement",
     "Text",
+    "CssStyleDeclaration",
 ]

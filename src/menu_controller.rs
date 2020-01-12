@@ -10,6 +10,7 @@ use web_sys::CanvasRenderingContext2d as Context;
 
 use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
 use crate::anim;
+use crate::colors::Color;
 use crate::demo;
 use crate::menu::{ConnectedState, GameOverInfo, GameState, LobbyInfo, NetGameState};
 use crate::net::{self, Message};
@@ -143,6 +144,28 @@ impl GameController {
                 let player = info.player_mut(&id);
                 let new_name = name_field.value();
                 player.name = new_name;
+                let message = Message::EditPlayer(id, player.clone());
+                sender.send(message);
+            }
+        }
+    }
+
+    fn set_color(&mut self, color_field: web_sys::HtmlInputElement, id: PlayerID) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
+            let mut state = state.write().expect("Failed to lock state");
+            if let NetGameState::Lobby(ref mut info) = *state {
+                let player = info.player_mut(&id);
+                let color = color_field.value();
+                let color_r = u8::from_str_radix(&color[1..3], 16).unwrap_throw();
+                let color_g = u8::from_str_radix(&color[3..5], 16).unwrap_throw();
+                let color_b = u8::from_str_radix(&color[5..7], 16).unwrap_throw();
+                let color_r = color_r as f32 / 255.0;
+                let color_g = color_g as f32 / 255.0;
+                let color_b = color_b as f32 / 255.0;
+                let color = Color(color_r, color_g, color_b);
+                player.color = color;
                 let message = Message::EditPlayer(id, player.clone());
                 sender.send(message);
             }
@@ -457,9 +480,15 @@ impl GameController {
                             match existing_player {
                                 Some(player) => {
                                     if !is_local {
-                                        let player = player.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                                        if player.inner_text() != player_info.name {
-                                            player.set_inner_text(&player_info.name);
+                                        let name = player.query_selector("span:first-child").unwrap_throw().unwrap_throw();
+                                        let name = name.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                        if name.inner_text() != player_info.name {
+                                            name.set_inner_text(&player_info.name);
+                                        }
+                                        let color = player.query_selector("span:last-child").unwrap_throw().unwrap_throw();
+                                        let color = color.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                        if color.style().get_property_value("background-color").unwrap_throw() != player_info.color.hex() {
+                                            color.style().set_property("background-color", &player_info.color.hex()).unwrap_throw();
                                         }
                                     }
                                 }
@@ -474,9 +503,22 @@ impl GameController {
                                         let id = player_info.id;
                                         listen!(&name_box, "input", self.set_name(name_box, id));
                                         player.append_with_node_1(&name_box).unwrap_throw();
+                                        let color = document.create_element("input").unwrap_throw();
+                                        let color = color.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+                                        color.set_type("color");
+                                        color.set_value(&player_info.color.hex());
+                                        listen!(&color, "input", self.set_color(color, id));
+                                        player.append_with_node_1(&color).unwrap_throw();
                                     } else {
-                                        let name = document.create_text_node(&player_info.name);
+                                        let name = document.create_element("span").unwrap_throw();
+                                        let name = name.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                        name.set_inner_text(&player_info.name);
                                         player.append_with_node_1(&name).unwrap_throw();
+                                        let color = document.create_element("span").unwrap_throw();
+                                        let color = color.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                        color.set_inner_html("&nbsp;");
+                                        color.style().set_property("background-color", &player_info.color.hex()).unwrap_throw();
+                                        player.append_with_node_1(&color).unwrap_throw();
                                     }
                                     players.append_with_node_1(&player).unwrap_throw();
                                 }
@@ -605,21 +647,30 @@ impl GameController {
                             if is_local {
                                 let name_box = document.create_element("input").unwrap_throw();
                                 let name_box = name_box.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
-                                name_box.set_attribute("value", &player_info.name).unwrap_throw();
+                                name_box.set_value(&player_info.name);
                                 player.append_with_node_1(&name_box).unwrap_throw();
                                 let id = player_info.id;
                                 listen!(&name_box, "input", self.set_name(name_box, id));
                                 player.append_with_node_1(&name_box).unwrap_throw();
+                                let color = document.create_element("input").unwrap_throw();
+                                let color = color.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+                                color.set_type("color");
+                                color.set_value(&player_info.color.hex());
+                                listen!(&color, "input", self.set_color(color, id));
+                                player.append_with_node_1(&color).unwrap_throw();
                             } else {
-                                let name = document.create_text_node(&player_info.name);
+                                let name = document.create_element("span").unwrap_throw();
+                                let name = name.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                name.set_inner_text(&player_info.name);
                                 player.append_with_node_1(&name).unwrap_throw();
+                                let color = document.create_element("span").unwrap_throw();
+                                let color = color.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                color.set_inner_html("&nbsp;");
+                                color.style().set_property("background-color", &player_info.color.hex()).unwrap_throw();
+                                player.append_with_node_1(&color).unwrap_throw();
                             }
                             players.append_with_node_1(&player).unwrap_throw();
                         }
-
-                        // TODO circles
-
-                        // TODO randomize color with self.randomize_color()
 
                         let new_local = document.create_element("button").unwrap_throw();
                         let new_local = new_local.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();

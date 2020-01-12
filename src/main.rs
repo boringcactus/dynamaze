@@ -110,7 +110,6 @@ fn main() {
 
     {
         use gloo::timers::callback::Interval;
-        let window = window.clone();
         let game_controller = game_controller.clone();
         let mut last_frame = now();
         Interval::new(1_000 / 60, move || {

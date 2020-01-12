@@ -8,6 +8,12 @@ use wasm_bindgen::JsValue;
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Color(pub f32, pub f32, pub f32);
 
+impl Color {
+    pub fn hex(&self) -> String {
+        format!("#{:02x}{:02x}{:02x}", (self.0 * 255.0) as u8, (self.1 * 255.0) as u8, (self.2 * 255.0) as u8)
+    }
+}
+
 impl Into<JsValue> for Color {
     fn into(self) -> JsValue {
         JsValue::from_str(&format!(
