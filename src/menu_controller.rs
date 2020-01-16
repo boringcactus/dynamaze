@@ -592,8 +592,11 @@ impl GameController {
                 let connect_form: web_sys::HtmlFormElement = create_element(&document, "form");
                 main.append_with_node_1(&connect_form).unwrap_throw();
 
+                let connect_label: web_sys::HtmlElement = create_element_with_text(&document, "label", "Lobby ID");
+                connect_form.append_with_node_1(&connect_label).unwrap_throw();
+
                 let connect_text: web_sys::HtmlElement = create_element(&document, "input");
-                connect_form
+                connect_label
                     .append_with_node_1(&connect_text)
                     .unwrap_throw();
 
@@ -609,12 +612,15 @@ impl GameController {
                 match *state {
                     NetGameState::Lobby(ref info) => {
                         let status = if is_host {
-                            let game_id = info.id;
-                            format!("Hosting lobby\n{}", game_id)
+                            "Hosting lobby"
                         } else {
-                            "Connected to lobby".into()
+                            "Connected to lobby"
                         };
-                        let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", &status);
+                        let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", status);
+                        main.append_with_node_1(&header).unwrap_throw();
+
+                        let id = format!("Lobby ID: {}", info.id);
+                        let header: web_sys::HtmlElement = create_element_with_text(&document, "h2", &id);
                         main.append_with_node_1(&header).unwrap_throw();
 
                         let main_menu: web_sys::HtmlElement = create_element_with_text(&document, "button", "Main Menu");

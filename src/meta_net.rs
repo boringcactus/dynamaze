@@ -1,7 +1,7 @@
 //! Network control messages
 use serde::{Deserialize, Serialize};
 
-pub type GameID = u64;
+pub type GameID = u16;
 
 /// A network control message
 #[derive(Serialize, Deserialize, Debug, Clone)]
