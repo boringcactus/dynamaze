@@ -68,12 +68,14 @@ fn handle_incoming(
 pub struct NetHandler {
     socket: Option<web_sys::WebSocket>,
     message_listener: Option<EventListener>,
+    error_listener: Option<EventListener>,
     queue: Arc<Mutex<VecDeque<MetaMessage>>>,
 }
 
 impl Drop for NetHandler {
     fn drop(&mut self) {
         drop(self.message_listener.take());
+        drop(self.error_listener.take());
         if let Some(socket) = &self.socket {
             socket.close().unwrap_throw();
         }
@@ -91,7 +93,7 @@ impl NetHandler {
         let addr = if is_localhost {
             "ws://127.0.0.1:8080/ws/"
         } else {
-            "wss://api.dynamaze.fun/ws/"
+            "wss://dynamaze-primary-server.herokuapp.com/ws/"
         };
         let socket = web_sys::WebSocket::new(addr).unwrap_throw();
         socket.set_binary_type(web_sys::BinaryType::Arraybuffer);
@@ -102,6 +104,7 @@ impl NetHandler {
             Arc::new(Mutex::new(queue))
         };
         let reply_queue = queue.clone();
+        let message_state = state.clone();
         let message_listener = EventListener::new(&socket, "message", move |event| {
             let event = event
                 .dyn_ref::<web_sys::MessageEvent>()
@@ -113,14 +116,26 @@ impl NetHandler {
             let data = js_sys::Uint8Array::new(data);
             let data = data.to_vec();
             let message = deserialize(&data).expect_throw("Bad message received");
-            let reply = handle_incoming(message, state.clone(), player);
+            let reply = handle_incoming(message, message_state.clone(), player);
             if let Some(reply) = reply {
                 reply_queue.lock().unwrap().push_back(reply.into());
+            }
+        });
+        let error_listener = EventListener::new(&socket, "close", move |event| {
+            let event = event
+                .dyn_ref::<web_sys::CloseEvent>()
+                .expect_throw("Bad close");
+            if !event.was_clean() {
+                let code = event.code();
+                let error = format!("WebSocket connection error: {}", code);
+                let mut state = state.write().unwrap_throw();
+                *state = NetGameState::Error(error);
             }
         });
         NetHandler {
             socket: Some(socket),
             message_listener: Some(message_listener),
+            error_listener: Some(error_listener),
             queue,
         }
     }
@@ -129,6 +144,7 @@ impl NetHandler {
         NetHandler {
             socket: None,
             message_listener: None,
+            error_listener: None,
             queue: Default::default(),
         }
     }

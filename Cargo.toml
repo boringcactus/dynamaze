@@ -56,4 +56,5 @@ features = [
     "Text",
     "CssStyleDeclaration",
     "AudioContextState",
+    "CloseEvent",
 ]
