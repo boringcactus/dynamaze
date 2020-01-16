@@ -429,6 +429,24 @@ impl GameController {
     }
 
     fn build_dom(&mut self, main: &web_sys::Element) {
+        fn query_selector<T: JsCast + Clone>(element: &web_sys::Element, selector: &str) -> T {
+            let result = element.query_selector(selector).unwrap_throw().unwrap_throw();
+            let result = result.dyn_ref::<T>().unwrap_throw();
+            result.clone()
+        }
+        fn create_element<T: JsCast + Clone>(document: &web_sys::Document, tag: &str) -> T {
+            let result = document.create_element(tag).unwrap_throw();
+            let result = result.dyn_ref::<T>().unwrap_throw();
+            result.clone()
+        }
+        fn create_element_with_text<T: JsCast + Clone>(document: &web_sys::Document, tag: &str, text: &str) -> T {
+            let result = document.create_element(tag).unwrap_throw();
+            let result = result.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+            result.set_inner_text(text);
+            let result = result.dyn_ref::<T>().unwrap_throw();
+            result.clone()
+        }
+
         let old_class = main.class_name();
         let curr_class = self.curr_class();
 
@@ -457,6 +475,36 @@ impl GameController {
         // get ready to make some elements
         let document = main.owner_document().unwrap_throw();
 
+        // this can't be a closure or a regular function because of ownership weirdness
+        macro_rules! create_player {
+            ($player_info:expr, $is_local:expr) => {{
+                let player_info = $player_info;
+                let is_local = $is_local;
+                let player: web_sys::HtmlElement = create_element(&document, "li");
+                player.set_id(&format!("player-{}", player_info.id));
+                if is_local {
+                    let name_box: web_sys::HtmlInputElement = create_element(&document, "input");
+                    name_box.set_value(&player_info.name);
+                    let id = player_info.id;
+                    listen!(&name_box, "input", self.set_name(name_box, id));
+                    player.append_with_node_1(&name_box).unwrap_throw();
+                    let color: web_sys::HtmlInputElement = create_element(&document, "input");
+                    color.set_type("color");
+                    color.set_value(&player_info.color.hex());
+                    listen!(&color, "input", self.set_color(color, id));
+                    player.append_with_node_1(&color).unwrap_throw();
+                } else {
+                    let name: web_sys::HtmlElement = create_element_with_text(&document, "span", &player_info.name);
+                    player.append_with_node_1(&name).unwrap_throw();
+                    let color: web_sys::HtmlElement = create_element(&document, "span");
+                    color.set_inner_html("&nbsp;");
+                    color.style().set_property("background-color", &player_info.color.hex()).unwrap_throw();
+                    player.append_with_node_1(&color).unwrap_throw();
+                }
+                player
+            }};
+        }
+
         // if the UI doesn't need to be rebuilt from scratch...
         if old_class == curr_class {
             // apply updates incrementally
@@ -465,7 +513,7 @@ impl GameController {
                 let state = state.read().expect("Failed to lock state");
                 match *state {
                     NetGameState::Lobby(ref info) => {
-                        let players = main.query_selector("ul").unwrap_throw().unwrap_throw();
+                        let players: web_sys::HtmlElement = query_selector(main, "ul");
                         for player_info in info.players_ref() {
                             let is_local = player_info.lives_with(self.player_id);
                             let existing_player = players.query_selector(&format!("#player-{}", player_info.id))
@@ -473,56 +521,25 @@ impl GameController {
                             match existing_player {
                                 Some(player) => {
                                     if !is_local {
-                                        let name = player.query_selector("span:first-child").unwrap_throw().unwrap_throw();
-                                        let name = name.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                        let name: web_sys::HtmlElement = query_selector(&player, "span:first-child");
                                         if name.inner_text() != player_info.name {
                                             name.set_inner_text(&player_info.name);
                                         }
-                                        let color = player.query_selector("span:last-child").unwrap_throw().unwrap_throw();
-                                        let color = color.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
+                                        let color: web_sys::HtmlElement = query_selector(&player, "span:last-child");
                                         if color.style().get_property_value("background-color").unwrap_throw() != player_info.color.hex() {
                                             color.style().set_property("background-color", &player_info.color.hex()).unwrap_throw();
                                         }
                                     }
                                 }
                                 None => {
-                                    let player = document.create_element("li").unwrap_throw();
-                                    player.set_id(&format!("player-{}", player_info.id));
-                                    if is_local {
-                                        let name_box = document.create_element("input").unwrap_throw();
-                                        let name_box = name_box.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
-                                        name_box.set_attribute("value", &player_info.name).unwrap_throw();
-                                        player.append_with_node_1(&name_box).unwrap_throw();
-                                        let id = player_info.id;
-                                        listen!(&name_box, "input", self.set_name(name_box, id));
-                                        player.append_with_node_1(&name_box).unwrap_throw();
-                                        let color = document.create_element("input").unwrap_throw();
-                                        let color = color.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
-                                        color.set_type("color");
-                                        color.set_value(&player_info.color.hex());
-                                        listen!(&color, "input", self.set_color(color, id));
-                                        player.append_with_node_1(&color).unwrap_throw();
-                                    } else {
-                                        let name = document.create_element("span").unwrap_throw();
-                                        let name = name.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                                        name.set_inner_text(&player_info.name);
-                                        player.append_with_node_1(&name).unwrap_throw();
-                                        let color = document.create_element("span").unwrap_throw();
-                                        let color = color.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                                        color.set_inner_html("&nbsp;");
-                                        color.style().set_property("background-color", &player_info.color.hex()).unwrap_throw();
-                                        player.append_with_node_1(&color).unwrap_throw();
-                                    }
+                                    let player = create_player!(player_info, is_local);
                                     players.append_with_node_1(&player).unwrap_throw();
                                 }
                             }
                         }
                     }
                     NetGameState::Active(_) => {
-                        let canvas = main.query_selector("canvas").unwrap_throw().unwrap_throw();
-                        let canvas = canvas
-                            .dyn_ref::<web_sys::HtmlCanvasElement>()
-                            .unwrap_throw();
+                        let canvas: web_sys::HtmlCanvasElement = query_selector(main, "canvas");
                         let window = web_sys::window().unwrap_throw();
                         let inner_width = window.inner_width().unwrap_throw().as_f64().unwrap_throw() as u32;
                         let inner_height = window.inner_height().unwrap_throw().as_f64().unwrap_throw() as u32;
@@ -545,64 +562,42 @@ impl GameController {
 
         match self.state {
             GameState::MainMenu => {
-                let header = document.create_element("h1").unwrap_throw();
-                let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                header.set_inner_text("DynaMaze");
+                let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", "DynaMaze");
                 main.append_with_node_1(&header).unwrap_throw();
 
-                let tutorial = document.create_element("button").unwrap_throw();
-                let tutorial = tutorial.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                tutorial.set_inner_text("Tutorial");
+                let tutorial: web_sys::HtmlElement = create_element_with_text(&document, "button", "Tutorial");
                 main.append_with_node_1(&tutorial).unwrap_throw();
                 listen!(&tutorial, "click", self.tutorial());
 
-                let host = document.create_element("button").unwrap_throw();
-                let host = host.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                host.set_inner_text("Host Game");
+                let host: web_sys::HtmlElement = create_element_with_text(&document, "button", "Host Game");
                 main.append_with_node_1(&host).unwrap_throw();
                 listen!(&host, "click", self.host());
 
-                let connect = document.create_element("button").unwrap_throw();
-                let connect = connect.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                connect.set_inner_text("Join Game");
+                let connect: web_sys::HtmlElement = create_element_with_text(&document, "button", "Join Game");
                 main.append_with_node_1(&connect).unwrap_throw();
                 listen!(&connect, "click", self.connect());
 
-                let options = document.create_element("button").unwrap_throw();
-                let options = options.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                options.set_inner_text("Options");
+                let options: web_sys::HtmlElement = create_element_with_text(&document, "button", "Options");
                 main.append_with_node_1(&options).unwrap_throw();
                 listen!(&options, "click", self.enter_options());
             }
             GameState::ConnectMenu => {
-                let header = document.create_element("h1").unwrap_throw();
-                let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                header.set_inner_text("Connect to Game");
+                let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", "Connect to Game");
                 main.append_with_node_1(&header).unwrap_throw();
 
-                let main_menu = document.create_element("button").unwrap_throw();
-                let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                main_menu.set_inner_text("Main Menu");
+                let main_menu: web_sys::HtmlElement = create_element_with_text(&document, "button", "Main Menu");
                 main.append_with_node_1(&main_menu).unwrap_throw();
                 listen!(&main_menu, "click", self.main_menu());
 
-                let connect_form = document.create_element("form").unwrap_throw();
-                let connect_form = connect_form
-                    .dyn_ref::<web_sys::HtmlFormElement>()
-                    .unwrap_throw();
+                let connect_form: web_sys::HtmlFormElement = create_element(&document, "form");
                 main.append_with_node_1(&connect_form).unwrap_throw();
 
-                let connect_text = document.create_element("input").unwrap_throw();
-                let connect_text = connect_text
-                    .dyn_ref::<web_sys::HtmlElement>()
-                    .unwrap_throw();
+                let connect_text: web_sys::HtmlElement = create_element(&document, "input");
                 connect_form
                     .append_with_node_1(&connect_text)
                     .unwrap_throw();
 
-                let connect = document.create_element("button").unwrap_throw();
-                let connect = connect.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                connect.set_inner_text("Connect");
+                let connect: web_sys::HtmlElement = create_element_with_text(&document, "button", "Connect");
                 connect_form.append_with_node_1(&connect).unwrap_throw();
 
                 listen!(&connect_form, "submit", self.do_connect(connect_form));
@@ -619,159 +614,98 @@ impl GameController {
                         } else {
                             "Connected to lobby".into()
                         };
-                        let header = document.create_element("h1").unwrap_throw();
-                        let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        header.set_inner_text(&status);
+                        let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", &status);
                         main.append_with_node_1(&header).unwrap_throw();
 
-                        let main_menu = document.create_element("button").unwrap_throw();
-                        let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        main_menu.set_inner_text("Main Menu");
+                        let main_menu: web_sys::HtmlElement = create_element_with_text(&document, "button", "Main Menu");
                         main.append_with_node_1(&main_menu).unwrap_throw();
                         listen!(&main_menu, "click", self.main_menu());
 
-                        let players = document.create_element("ul").unwrap_throw();
+                        let players: web_sys::Element = create_element(&document, "ul");
                         main.append_with_node_1(&players).unwrap_throw();
 
                         for player_info in info.players_ref() {
-                            let player = document.create_element("li").unwrap_throw();
-                            player.set_id(&format!("player-{}", player_info.id));
                             let is_local = player_info.lives_with(self.player_id);
-                            if is_local {
-                                let name_box = document.create_element("input").unwrap_throw();
-                                let name_box = name_box.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
-                                name_box.set_value(&player_info.name);
-                                player.append_with_node_1(&name_box).unwrap_throw();
-                                let id = player_info.id;
-                                listen!(&name_box, "input", self.set_name(name_box, id));
-                                player.append_with_node_1(&name_box).unwrap_throw();
-                                let color = document.create_element("input").unwrap_throw();
-                                let color = color.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
-                                color.set_type("color");
-                                color.set_value(&player_info.color.hex());
-                                listen!(&color, "input", self.set_color(color, id));
-                                player.append_with_node_1(&color).unwrap_throw();
-                            } else {
-                                let name = document.create_element("span").unwrap_throw();
-                                let name = name.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                                name.set_inner_text(&player_info.name);
-                                player.append_with_node_1(&name).unwrap_throw();
-                                let color = document.create_element("span").unwrap_throw();
-                                let color = color.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                                color.set_inner_html("&nbsp;");
-                                color.style().set_property("background-color", &player_info.color.hex()).unwrap_throw();
-                                player.append_with_node_1(&color).unwrap_throw();
-                            }
+                            let player = create_player!(player_info, is_local);
                             players.append_with_node_1(&player).unwrap_throw();
                         }
 
-                        let new_local = document.create_element("button").unwrap_throw();
-                        let new_local = new_local.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        new_local.set_inner_text("New Local Player");
+                        let new_local: web_sys::HtmlElement = create_element_with_text(&document, "button", "New Local Player");
                         main.append_with_node_1(&new_local).unwrap_throw();
                         listen!(&new_local, "click", self.new_local_player());
 
                         if is_host {
-                            let start = document.create_element("button").unwrap_throw();
-                            let start = start.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                            start.set_inner_text("Begin Game");
+                            let start: web_sys::HtmlElement = create_element_with_text(&document, "button", "Begin Game");
                             main.append_with_node_1(&start).unwrap_throw();
                             listen!(&start, "click", self.start_hosted_game());
                         }
                     }
                     NetGameState::Active(_) => {
-                        let canvas = document.create_element("canvas").unwrap_throw();
-                        let canvas = canvas
-                            .dyn_ref::<web_sys::HtmlCanvasElement>()
-                            .unwrap_throw();
+                        let canvas: web_sys::HtmlCanvasElement = create_element(&document, "canvas");
                         main.append_with_node_1(&canvas).unwrap_throw();
                     }
                     NetGameState::GameOver(ref info) => {
                         let text = format!("{} wins!", info.winner.name);
-                        let header = document.create_element("h1").unwrap_throw();
-                        let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        header.set_inner_text(&text);
+                        let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", &text);
                         main.append_with_node_1(&header).unwrap_throw();
 
-                        let main_menu = document.create_element("button").unwrap_throw();
-                        let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        main_menu.set_inner_text("Main Menu");
+                        let main_menu: web_sys::HtmlElement = create_element_with_text(&document, "button", "Main Menu");
                         main.append_with_node_1(&main_menu).unwrap_throw();
                         listen!(&main_menu, "click", self.main_menu());
                     }
                     NetGameState::Error(ref text) => {
-                        let header = document.create_element("h1").unwrap_throw();
-                        let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        header.set_inner_text("Error");
+                        let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", "Error");
                         main.append_with_node_1(&header).unwrap_throw();
 
-                        let body = document.create_element("p").unwrap_throw();
-                        let body = body.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        body.set_inner_text(text);
+                        let body: web_sys::HtmlElement = create_element_with_text(&document, "p", text);
                         main.append_with_node_1(&body).unwrap_throw();
 
-                        let main_menu = document.create_element("button").unwrap_throw();
-                        let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                        main_menu.set_inner_text("Main Menu");
+                        let main_menu: web_sys::HtmlElement = create_element_with_text(&document, "button", "Main Menu");
                         main.append_with_node_1(&main_menu).unwrap_throw();
                         listen!(&main_menu, "click", self.main_menu());
                     }
                 }
             }
             GameState::HardError(ref text) => {
-                let header = document.create_element("h1").unwrap_throw();
-                let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                header.set_inner_text("Error");
+                let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", "Error");
                 main.append_with_node_1(&header).unwrap_throw();
 
-                let body = document.create_element("p").unwrap_throw();
-                let body = body.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                body.set_inner_text(text);
+                let body: web_sys::HtmlElement = create_element_with_text(&document, "p", text);
                 main.append_with_node_1(&body).unwrap_throw();
 
-                let main_menu = document.create_element("button").unwrap_throw();
-                let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                main_menu.set_inner_text("Main Menu");
+                let main_menu: web_sys::HtmlElement = create_element_with_text(&document, "button", "Main Menu");
                 main.append_with_node_1(&main_menu).unwrap_throw();
                 listen!(&main_menu, "click", self.main_menu());
             }
             GameState::Options(ref curr_options) => {
-                let header = document.create_element("h1").unwrap_throw();
-                let header = header.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                header.set_inner_text("Options");
+                let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", "Options");
                 main.append_with_node_1(&header).unwrap_throw();
 
-                let music = document.create_element("label").unwrap_throw();
+                let music: web_sys::Element = create_element(&document, "label");
                 let music_label = document.create_text_node("Music Level");
                 music.append_with_node_1(&music_label).unwrap_throw();
-                let music_slider = document.create_element("input").unwrap_throw();
-                let music_slider = music_slider.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+                let music_slider: web_sys::HtmlInputElement = create_element(&document, "input");
                 music_slider.set_type("range");
                 music_slider.set_value(&format!("{}", curr_options.music_level));
                 listen!(&music_slider, "input", self.set_music_level(music_slider));
                 music.append_with_node_1(&music_slider).unwrap_throw();
                 main.append_with_node_1(&music).unwrap_throw();
 
-                let sound = document.create_element("label").unwrap_throw();
+                let sound: web_sys::Element = create_element(&document, "label");
                 let sound_label = document.create_text_node("Sound Level");
                 sound.append_with_node_1(&sound_label).unwrap_throw();
-                let sound_slider = document.create_element("input").unwrap_throw();
-                let sound_slider = sound_slider.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
+                let sound_slider: web_sys::HtmlInputElement = create_element(&document, "input");
                 sound_slider.set_type("range");
                 sound_slider.set_value(&format!("{}", curr_options.sound_level));
                 listen!(&sound_slider, "input", self.set_sound_level(sound_slider));
                 sound.append_with_node_1(&sound_slider).unwrap_throw();
                 main.append_with_node_1(&sound).unwrap_throw();
 
-                let save_button = document.create_element("button").unwrap_throw();
-                let save_button = save_button.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                save_button.set_inner_text("Save");
+                let save_button: web_sys::HtmlElement = create_element_with_text(&document, "button", "Save");
                 main.append_with_node_1(&save_button).unwrap_throw();
                 listen!(&save_button, "click", self.save_options());
 
-                let main_menu = document.create_element("button").unwrap_throw();
-                let main_menu = main_menu.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
-                main_menu.set_inner_text("Main Menu");
+                let main_menu: web_sys::HtmlElement = create_element_with_text(&document, "button", "Main Menu");
                 main.append_with_node_1(&main_menu).unwrap_throw();
                 listen!(&main_menu, "click", self.main_menu());
             }
