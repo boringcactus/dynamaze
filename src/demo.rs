@@ -22,6 +22,7 @@ pub fn new_controller() -> GameController {
         score_limit: 3,
         width: 0,
         height: 0,
+        version: 0,
     };
     let players = vec![
         Player::new(

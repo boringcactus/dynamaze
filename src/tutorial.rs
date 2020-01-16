@@ -14,6 +14,7 @@ pub fn new_conn_state(player_id: PlayerID) -> ConnectedState {
         score_limit: 1,
         width: 3,
         height: 3,
+        version: 0,
     };
     let players = vec![Player::new(
         "Player 1".to_string(),

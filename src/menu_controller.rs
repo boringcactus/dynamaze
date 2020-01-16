@@ -8,7 +8,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::CanvasRenderingContext2d as Context;
 
-use crate::{BoardController, BoardSettings, GameView, Player, PlayerID};
+use crate::{BoardController, GameView, Player, PlayerID};
 use crate::anim;
 use crate::colors::Color;
 use crate::demo;
@@ -107,6 +107,54 @@ impl GameController {
         }
     }
 
+    fn set_width(&mut self, width: web_sys::HtmlInputElement) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
+            let mut state = state.write().expect("Failed to lock state");
+            if let NetGameState::Lobby(ref mut info) = *state {
+                let settings = &mut info.settings;
+                settings.width = width.value().parse().unwrap_throw();
+                settings.version += 1;
+                width.form().unwrap_throw().dataset().set("version", &format!("{}", settings.version)).unwrap_throw();
+                let message = Message::EditSettings(settings.clone());
+                sender.send(message);
+            }
+        }
+    }
+
+    fn set_height(&mut self, height: web_sys::HtmlInputElement) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
+            let mut state = state.write().expect("Failed to lock state");
+            if let NetGameState::Lobby(ref mut info) = *state {
+                let settings = &mut info.settings;
+                settings.height = height.value().parse().unwrap_throw();
+                settings.version += 1;
+                height.form().unwrap_throw().dataset().set("version", &format!("{}", settings.version)).unwrap_throw();
+                let message = Message::EditSettings(settings.clone());
+                sender.send(message);
+            }
+        }
+    }
+
+    fn set_score_limit(&mut self, score_limit: web_sys::HtmlInputElement) {
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
+            let mut state = state.write().expect("Failed to lock state");
+            if let NetGameState::Lobby(ref mut info) = *state {
+                let settings = &mut info.settings;
+                settings.score_limit = score_limit.value().parse().unwrap_throw();
+                settings.version += 1;
+                score_limit.form().unwrap_throw().dataset().set("version", &format!("{}", settings.version)).unwrap_throw();
+                let message = Message::EditSettings(settings.clone());
+                sender.send(message);
+            }
+        }
+    }
+
     fn set_music_level(&mut self, slider: web_sys::HtmlInputElement) {
         if let GameState::Options(ref mut opts) = self.state {
             let val = slider.value();
@@ -196,12 +244,7 @@ impl GameController {
             if let NetGameState::Lobby(ref mut info) = *state {
                 if is_host {
                     let players = info.players_cloned();
-                    // TODO edit these
-                    let settings = BoardSettings {
-                        width: 7,
-                        height: 7,
-                        score_limit: 10,
-                    };
+                    let settings = info.settings.clone();
                     let board_controller = BoardController::new(settings, players, info.host.id);
                     let net_state = NetGameState::Active(board_controller);
                     *state = net_state;
@@ -400,9 +443,9 @@ impl GameController {
     }
 
     fn broadcast_state(&mut self) {
-        if let GameState::InGame(ref mut _conn_state) = self.state {
-            let sender = &mut _conn_state.sender;
-            let state = &mut _conn_state.state;
+        if let GameState::InGame(ref mut conn_state) = self.state {
+            let sender = &mut conn_state.sender;
+            let state = &mut conn_state.state;
             let state = state.read().expect("Failed to lock state");
             let message = Message::State(state.clone());
             sender.send(message);
@@ -444,6 +487,11 @@ impl GameController {
             let result = document.create_element(tag).unwrap_throw();
             let result = result.dyn_ref::<web_sys::HtmlElement>().unwrap_throw();
             result.set_inner_text(text);
+            let result = result.dyn_ref::<T>().unwrap_throw();
+            result.clone()
+        }
+        fn named_item<T: JsCast + Clone>(collection: &web_sys::HtmlCollection, name: &str) -> T {
+            let result = collection.named_item(name).unwrap_throw();
             let result = result.dyn_ref::<T>().unwrap_throw();
             result.clone()
         }
@@ -514,6 +562,7 @@ impl GameController {
                 let state = state.read().expect("Failed to lock state");
                 match *state {
                     NetGameState::Lobby(ref info) => {
+                        // update players
                         let players: web_sys::HtmlElement = query_selector(main, "ul");
                         for player_info in info.players_ref() {
                             let is_local = player_info.lives_with(self.player_id);
@@ -536,6 +585,31 @@ impl GameController {
                                     let player = create_player!(player_info, is_local);
                                     players.append_with_node_1(&player).unwrap_throw();
                                 }
+                            }
+                        }
+
+                        // update settings
+                        let settings_form: web_sys::HtmlFormElement = query_selector(main, "form");
+                        let current_version: usize = settings_form.dataset().get("version").unwrap_throw().parse().unwrap_throw();
+                        if current_version < info.settings.version {
+                            let elements = settings_form.elements();
+
+                            let width_field: web_sys::HtmlInputElement = named_item(&elements, "width");
+                            let width = format!("{}", info.settings.width);
+                            if width_field.value() != width {
+                                width_field.set_value(&width);
+                            }
+
+                            let height_field: web_sys::HtmlInputElement = named_item(&elements, "height");
+                            let height = format!("{}", info.settings.height);
+                            if height_field.value() != height {
+                                height_field.set_value(&height);
+                            }
+
+                            let score_limit_field: web_sys::HtmlInputElement = named_item(&elements, "score_limit");
+                            let score_limit = format!("{}", info.settings.score_limit);
+                            if score_limit_field.value() != score_limit {
+                                score_limit_field.set_value(&score_limit);
                             }
                         }
                     }
@@ -644,6 +718,46 @@ impl GameController {
                         let new_local: web_sys::HtmlElement = create_element_with_text(&document, "button", "New Local Player");
                         main.append_with_node_1(&new_local).unwrap_throw();
                         listen!(&new_local, "click", self.new_local_player());
+
+                        let settings_form: web_sys::HtmlElement = create_element(&document, "form");
+                        settings_form.dataset().set("version", &format!("{}", info.settings.version)).unwrap_throw();
+                        main.append_with_node_1(&settings_form).unwrap_throw();
+
+                        let width_label: web_sys::HtmlElement = create_element_with_text(&document, "label", "Board Width");
+                        settings_form.append_with_node_1(&width_label).unwrap_throw();
+                        let width: web_sys::HtmlInputElement = create_element(&document, "input");
+                        width.set_name("width");
+                        width.set_type("number");
+                        width.set_min("3");
+                        width.set_max("21");
+                        width.set_step("2");
+                        width.set_value(&format!("{}", info.settings.width));
+                        listen!(&width, "input", self.set_width(width));
+                        width_label.append_with_node_1(&width).unwrap_throw();
+
+                        let height_label: web_sys::HtmlElement = create_element_with_text(&document, "label", "Board Height");
+                        settings_form.append_with_node_1(&height_label).unwrap_throw();
+                        let height: web_sys::HtmlInputElement = create_element(&document, "input");
+                        height.set_name("height");
+                        height.set_type("number");
+                        height.set_min("3");
+                        height.set_max("21");
+                        height.set_step("2");
+                        height.set_value(&format!("{}", info.settings.height));
+                        listen!(&height, "input", self.set_height(height));
+                        height_label.append_with_node_1(&height).unwrap_throw();
+
+                        let score_limit_label: web_sys::HtmlElement = create_element_with_text(&document, "label", "Score Limit");
+                        settings_form.append_with_node_1(&score_limit_label).unwrap_throw();
+                        let score_limit: web_sys::HtmlInputElement = create_element(&document, "input");
+                        score_limit.set_name("score_limit");
+                        score_limit.set_type("number");
+                        score_limit.set_min("1");
+                        score_limit.set_max("20");
+                        score_limit.set_step("1");
+                        score_limit.set_value(&format!("{}", info.settings.score_limit));
+                        listen!(&score_limit, "input", self.set_score_limit(score_limit));
+                        score_limit_label.append_with_node_1(&score_limit).unwrap_throw();
 
                         if is_host {
                             let start: web_sys::HtmlElement = create_element_with_text(&document, "button", "Begin Game");

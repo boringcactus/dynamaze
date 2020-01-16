@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::{Player, PlayerID};
+use crate::{BoardSettings, Player, PlayerID};
 use crate::anim;
 use crate::menu::NetGameState;
 pub use crate::meta_net::{GameID, MetaMessage};
@@ -22,6 +22,8 @@ pub enum Message {
     State(NetGameState),
     /// Edit player info
     EditPlayer(PlayerID, Player),
+    /// Edit game settings
+    EditSettings(BoardSettings),
     /// Synchronize animation state
     Anim(anim::AnimSync),
 }
@@ -53,6 +55,11 @@ fn handle_incoming(
             if let NetGameState::Lobby(ref mut lobby_info) = *state {
                 let p = lobby_info.player_mut(&id);
                 *p = player;
+            }
+        }
+        Message::EditSettings(settings) => {
+            if let NetGameState::Lobby(ref mut lobby_info) = *state {
+                lobby_info.settings = settings;
             }
         }
         Message::State(new_state) => {

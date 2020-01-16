@@ -27,6 +27,19 @@ pub struct BoardSettings {
     pub height: usize,
     /// Score required to win
     pub score_limit: u8,
+    /// Version (increases monotonically, for replicating edits in lobby)
+    pub version: usize,
+}
+
+impl Default for BoardSettings {
+    fn default() -> Self {
+        BoardSettings {
+            width: 7,
+            height: 7,
+            score_limit: 10,
+            version: 0,
+        }
+    }
 }
 
 /// Handles events for DynaMaze game session

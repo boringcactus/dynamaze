@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{BoardController, Player, PlayerID};
+use crate::{BoardController, BoardSettings, Player, PlayerID};
 use crate::colors::Color;
 use crate::net::{GameID, Message, NetHandler};
 use crate::options::GameOptions;
@@ -18,6 +18,8 @@ pub struct LobbyInfo {
     pub guests: Vec<Player>,
     /// Game ID
     pub id: GameID,
+    /// Board settings
+    pub settings: BoardSettings,
 }
 
 impl LobbyInfo {
@@ -27,6 +29,7 @@ impl LobbyInfo {
             host: Player::new("Host McHostface".into(), Color(0.7, 0.2, 0.7), player_id),
             guests: vec![],
             id,
+            settings: BoardSettings::default(),
         }
     }
 

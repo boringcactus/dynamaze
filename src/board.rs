@@ -236,7 +236,7 @@ impl Board {
                     Direction::East | Direction::West => (old_row, (old_col + width)) + move_dir,
                     Direction::North | Direction::South => ((old_row + height), old_col) + move_dir,
                 };
-                (new_row % width, new_col % height)
+                (new_row % height, new_col % width)
             };
         }
     }
