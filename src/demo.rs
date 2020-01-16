@@ -12,7 +12,11 @@ use crate::net;
 
 /// Checks to see if the game was launched with the `--demo` argument.
 pub fn is_demo() -> bool {
-    false
+    use wasm_bindgen::prelude::*;
+    let window = web_sys::window().unwrap_throw();
+    let location = window.location();
+    let search = location.search().unwrap_throw();
+    search == "?demo"
 }
 
 /// Creates a demo-friendly GameController
@@ -55,10 +59,23 @@ pub fn new_controller() -> GameController {
     let sender = net::NetHandler::run_fake();
     let state = ConnectedState { sender, state };
     let state = GameState::InGame(state);
+    let view = crate::GameView {
+        board_view: crate::BoardView {
+            settings: crate::BoardViewSettings {
+                ui_margin_south: 0.0,
+                ui_margin_east: 0.0,
+                ..Default::default()
+            }
+        }
+    };
     GameController {
         state,
         player_id,
-        ..Default::default()
+        view,
+        last_player: None,
+        sound_engine: Default::default(),
+        actions: Default::default(),
+        listeners: vec![],
     }
 }
 

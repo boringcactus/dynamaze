@@ -1,5 +1,4 @@
 #![deny(missing_docs)]
-#![windows_subsystem = "windows"]
 
 //! DynaMaze, a multiplayer game about traversing a shifting maze
 
@@ -38,6 +37,11 @@ mod player;
 mod sound;
 mod tile;
 mod tutorial;
+
+/// Logs some text
+pub fn log(text: &str) {
+    ::web_sys::console::log_1(&::wasm_bindgen::JsValue::from_str(text));
+}
 
 fn main() {
     console_error_panic_hook::set_once();
