@@ -83,6 +83,8 @@ pub struct GameOverInfo {
 /// Synchronized state of a network game
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum NetGameState {
+    /// Connecting
+    Connecting,
     /// Waiting for players to connect
     Lobby(LobbyInfo),
     /// In game
@@ -97,6 +99,7 @@ impl NetGameState {
     /// Checks if a given player ID belongs to the host
     pub fn is_host(&self, id: PlayerID) -> bool {
         let host_id = match self {
+            NetGameState::Connecting => 0,
             NetGameState::Lobby(ref info) => info.host.id,
             NetGameState::Active(ref board_controller) => board_controller.host_id,
             NetGameState::GameOver(ref info) => info.host_id,

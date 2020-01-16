@@ -31,6 +31,7 @@ impl GameView {
                 let state = &conn_state.state;
                 let state = state.read().expect("Failed to acquire state mutex");
                 match *state {
+                    NetGameState::Connecting => {}
                     NetGameState::Lobby(_) => {}
                     NetGameState::Active(ref board_controller) => {
                         self.board_view

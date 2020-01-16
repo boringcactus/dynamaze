@@ -96,7 +96,7 @@ impl GameController {
             let game = elements.item(0).unwrap_throw();
             let game = game.dyn_ref::<web_sys::HtmlInputElement>().unwrap_throw();
             let game = game.value().parse().unwrap_throw();
-            let state = NetGameState::Error("Connecting...".to_string());
+            let state = NetGameState::Connecting;
             let state = Arc::new(RwLock::new(state));
             let mut sender = net::NetHandler::run(state.clone(), game, self.player_id);
             anim::STATE.write().unwrap().set_send(sender.queue());
@@ -417,6 +417,7 @@ impl GameController {
                 let state = &conn_state.state;
                 let state = state.read().expect("Failed to lock state");
                 match *state {
+                    NetGameState::Connecting => "connecting",
                     NetGameState::Lobby(_) => "lobby",
                     NetGameState::Active(_) => "active",
                     NetGameState::GameOver(_) => "game-over",
@@ -610,6 +611,10 @@ impl GameController {
                 let state = state.read().expect("Failed to lock state");
                 let is_host = state.is_host(self.player_id);
                 match *state {
+                    NetGameState::Connecting => {
+                        let header: web_sys::HtmlElement = create_element_with_text(&document, "h1", "Connecting...");
+                        main.append_with_node_1(&header).unwrap_throw();
+                    }
                     NetGameState::Lobby(ref info) => {
                         let status = if is_host {
                             "Hosting lobby"
