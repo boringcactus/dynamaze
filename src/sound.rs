@@ -20,7 +20,7 @@ fn calc_gain(global_scale: f32, options_level: u8) -> f32 {
 }
 
 fn ramp_gain(gain: web_sys::AudioParam, value: f32) {
-    gain.exponential_ramp_to_value_at_time(value, 0.01);
+    gain.exponential_ramp_to_value_at_time(value, 0.01).unwrap_throw();
 }
 
 impl Music {
@@ -112,7 +112,7 @@ impl SoundEngine {
         let mut music_sources = self.music_sources.lock().unwrap();
         if let Some(ref old_music) = *current_music {
             if let Some(old_source) = music_sources.get(old_music) {
-                old_source.pause();
+                old_source.pause().unwrap_throw();
             }
         }
         let source = music_sources.entry(music).or_insert_with(|| {
@@ -126,7 +126,7 @@ impl SoundEngine {
                 .unwrap_throw();
             source
         });
-        source.play();
+        let _ = source.play().unwrap_throw();
         *current_music = Some(music);
     }
 
@@ -144,7 +144,7 @@ impl SoundEngine {
                 .unwrap_throw();
             source
         });
-        source.play();
+        let _ = source.play().unwrap_throw();
     }
 
     pub fn fetch_volume(&self) {
